@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>안전 슬로건 공모전 접수</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&family=Bebas+Neue&display=swap" rel="stylesheet">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Noto Sans KR', sans-serif;
+    background: #0a1628;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px 16px;
+  }
+
+  .card {
+    background: #ffffff;
+    border-radius: 20px;
+    width: 100%;
+    max-width: 420px;
+    overflow: hidden;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.4);
+  }
+
+  .hero {
+    background: #003087;
+    padding: 28px 28px 22px;
+    position: relative;
+    overflow: hidden;
+  }
+  .hero::before {
+    content: '';
+    position: absolute;
+    top: -30px; right: -30px;
+    width: 140px; height: 140px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.06);
+  }
+  .hero::after {
+    content: '';
+    position: absolute;
+    bottom: -20px; left: 40px;
+    width: 80px; height: 80px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.04);
+  }
+
+  .badge {
+    display: inline-block;
+    background: rgba(255,255,255,0.18);
+    color: rgba(255,255,255,0.85);
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.06em;
+    padding: 4px 10px;
+    border-radius: 20px;
+    margin-bottom: 12px;
+  }
+
+  .hero-title {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 34px;
+    color: #ffffff;
+    line-height: 1.1;
+    margin: 0 0 6px;
+    letter-spacing: 0.02em;
+  }
+
+  .hero-sub {
+    font-size: 12px;
+    color: rgba(255,255,255,0.55);
+    margin: 0;
+  }
+
+  .deadline-strip {
+    background: #ffc72c;
+    padding: 7px 28px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .deadline-text {
+    font-size: 12px;
+    font-weight: 700;
+    color: #002060;
+    letter-spacing: 0.03em;
+  }
+
+  .body {
+    padding: 24px 28px 28px;
+  }
+
+  .prize-row {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 20px;
+  }
+  .prize-chip {
+    flex: 1;
+    background: #f0f4ff;
+    border-radius: 10px;
+    padding: 10px 8px;
+    text-align: center;
+  }
+  .prize-chip .p-icon { font-size: 18px; }
+  .prize-chip .p-label { font-size: 10px; color: #7a90b8; margin-top: 3px; font-weight: 500; }
+  .prize-chip .p-val { font-size: 12px; color: #003087; font-weight: 700; margin-top: 1px; }
+
+  .field { margin-bottom: 20px; }
+  .field label {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 12px;
+    font-weight: 700;
+    color: #003087;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    margin-bottom: 8px;
+  }
+  .req { color: #e53935; font-size: 14px; line-height: 1; }
+
+  .field input,
+  .field textarea {
+    width: 100%;
+    padding: 12px 14px;
+    border: 1.5px solid #e0e7f3;
+    border-radius: 10px;
+    font-size: 14px;
+    font-family: 'Noto Sans KR', sans-serif;
+    color: #111;
+    background: #f8faff;
+    transition: border-color 0.18s, box-shadow 0.18s;
+    box-sizing: border-box;
+    -webkit-appearance: none;
+  }
+  .field input:focus,
+  .field textarea:focus {
+    outline: none;
+    border-color: #003087;
+    box-shadow: 0 0 0 3px rgba(0,48,135,0.10);
+    background: #fff;
+  }
+  .field input::placeholder,
+  .field textarea::placeholder { color: #b0bcd4; }
+  .field textarea { height: 130px; resize: none; line-height: 1.6; }
+
+  .hint { font-size: 11px; color: #8fa0c0; margin-top: 5px; }
+  .char-count { text-align: right; font-size: 11px; color: #b0bcd4; margin-top: 4px; }
+  .char-count.warn { color: #e53935; }
+
+  .dept-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+  .submit-btn {
+    width: 100%;
+    background: #003087;
+    color: #fff;
+    border: none;
+    border-radius: 12px;
+    padding: 15px;
+    font-size: 15px;
+    font-weight: 700;
+    font-family: 'Noto Sans KR', sans-serif;
+    cursor: pointer;
+    margin-top: 4px;
+    transition: background 0.18s, transform 0.1s;
+  }
+  .submit-btn:hover { background: #00205e; }
+  .submit-btn:active { transform: scale(0.98); }
+  .submit-btn.loading { background: #6b8abf; cursor: not-allowed; }
+
+  .footer-note {
+    font-size: 11px;
+    color: #b0bcd4;
+    text-align: center;
+    margin-top: 16px;
+    line-height: 1.5;
+  }
+
+  .success-view { display: none; text-align: center; padding: 40px 28px; }
+  .success-view.show { display: block; }
+  .form-view.hide { display: none; }
+
+  .check-circle {
+    width: 64px; height: 64px;
+    background: #e8f5ee;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    margin: 0 auto 16px;
+    font-size: 28px;
+  }
+  .success-title { font-size: 18px; font-weight: 700; color: #1a7f4e; margin-bottom: 8px; }
+  .success-sub { font-size: 13px; color: #8fa0c0; line-height: 1.6; }
+  .reset-btn {
+    margin-top: 24px;
+    background: none;
+    border: 1.5px solid #dde6f5;
+    border-radius: 10px;
+    padding: 10px 24px;
+    font-size: 13px;
+    font-family: 'Noto Sans KR', sans-serif;
+    color: #5a7ab5;
+    cursor: pointer;
+  }
+</style>
+</head>
+<body>
+
+<div class="card">
+
+  <div class="hero">
+    <div class="badge">POSCO INTERNATIONAL · 2026</div>
+    <div class="hero-title">안전 슬로건 공모전</div>
+    <p class="hero-sub">포스코인터내셔널 행정지원그룹</p>
+  </div>
+
+  <div class="deadline-strip">
+    <span style="font-size:13px;">📅</span>
+    <span class="deadline-text">접수기간 : ~2026.05.15, 14:00</span>
+  </div>
+
+  <div class="body">
+
+    <div class="prize-row">
+      <div class="prize-chip">
+        <div class="p-icon">🥇</div>
+        <div class="p-label">최우수</div>
+        <div class="p-val">1명</div>
+      </div>
+    </div>
+
+    <div class="form-view" id="formView">
+
+      <div class="dept-row">
+        <div class="field">
+          <label>소속 <span class="req">*</span></label>
+          <input type="text" id="dept" placeholder="행정지원그룹">
+        </div>
+        <div class="field">
+          <label>이름 <span class="req">*</span></label>
+          <input type="text" id="name" placeholder="홍길동">
+        </div>
+      </div>
+
+      <div class="field">
+        <label>슬로건 내용 <span class="req">*</span></label>
+        <textarea id="content"
+          placeholder="안전 슬로건을 입력해주세요.&#10;&#10;예) 오늘도 안전하게, 내일도 함께!"
+          maxlength="200"
+          oninput="updateCount()"></textarea>
+        <div class="char-count" id="charCount">0 / 200</div>
+        <div class="hint">간결하고 기억하기 쉬운 문구일수록 좋습니다</div>
+      </div>
+
+      <button class="submit-btn" id="submitBtn" onclick="handleSubmit()">접수하기 →</button>
+
+      <div class="footer-note">
+        접수된 내용은 심사 후 개별 안내됩니다<br>
+        1인 최대 3개까지 중복 접수 가능
+      </div>
+
+    </div>
+
+    <div class="success-view" id="successView">
+      <div class="check-circle">✅</div>
+      <div class="success-title">접수 완료!</div>
+      <p class="success-sub">소중한 슬로건이 접수되었습니다.<br>심사 결과는 추후 개별 안내드립니다.</p>
+      <button class="reset-btn" onclick="resetForm()">다시 접수하기</button>
+    </div>
+
+  </div>
+</div>
+
+<script>
+// ⬇️ Power Automate HTTP 트리거 URL을 여기에 붙여넣기
+const FLOW_URL = "https://defaultb9501effd05e4bf18a87898d83f46c.eb.environment.api.powerplatform.com:443/powerautomate/automations/direct/workflows/5dbd80e80a674fa0967c2b8e7f63a05c/triggers/manual/paths/invoke?api-version=1&sp=%2Ftriggers%2Fmanual%2Frun&sv=1.0&sig=QGTGN9sVhGFwasU0s9xbqDTVJmnSF1dniwJEP3OpK7c";
+
+function updateCount() {
+  const t = document.getElementById('content');
+  const c = document.getElementById('charCount');
+  const len = t.value.length;
+  c.textContent = len + ' / 200';
+  c.className = 'char-count' + (len > 170 ? ' warn' : '');
+}
+
+async function handleSubmit() {
+  const dept    = document.getElementById('dept').value.trim();
+  const name    = document.getElementById('name').value.trim();
+  const content = document.getElementById('content').value.trim();
+  const btn     = document.getElementById('submitBtn');
+
+  if (!dept || !name || !content) {
+    const orig = btn.textContent;
+    btn.textContent = '모든 항목을 입력해주세요';
+    btn.style.background = '#e53935';
+    setTimeout(() => {
+      btn.textContent = orig;
+      btn.style.background = '';
+    }, 1800);
+    return;
+  }
+
+  btn.textContent = '접수 중...';
+  btn.className = 'submit-btn loading';
+
+  try {
+    await fetch(FLOW_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        접수자: name,
+        소속: dept,
+        슬로건: content,
+        접수일자: new Date().toISOString().slice(0, 19) + 'Z'
+      })
+    });
+  } catch (e) {
+    // CORS 환경에서도 데이터는 전달됨
+  }
+
+  document.getElementById('formView').classList.add('hide');
+  document.getElementById('successView').classList.add('show');
+}
+
+function resetForm() {
+  document.getElementById('dept').value = '';
+  document.getElementById('name').value = '';
+  document.getElementById('content').value = '';
+  updateCount();
+  const btn = document.getElementById('submitBtn');
+  btn.textContent = '접수하기 →';
+  btn.className = 'submit-btn';
+  document.getElementById('formView').classList.remove('hide');
+  document.getElementById('successView').classList.remove('show');
+}
+</script>
+
+</body>
+</html>
