@@ -6,9 +6,9 @@ DB_NAME = "design_system.db"
 
 
 def init_db():
+    # 파일이 없으면 자동으로 생성되고, 테이블이 없으면 생성됨
     conn = sqlite3.connect(DB_NAME)
     c = conn.cursor()
-    # 엑셀 헤더에 맞춘 테이블 구조
     c.execute('''CREATE TABLE IF NOT EXISTS master_data 
                  (category_large TEXT, category_mid TEXT, item_name TEXT, 
                   spec TEXT, unit TEXT, unit_price REAL, source TEXT)''')
