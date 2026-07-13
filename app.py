@@ -17,18 +17,22 @@ def save_project_to_cloud(project_name, df):
     try:
         doc = db.get_sheet()
         ws = doc.worksheet("프로젝트저장소")
+        # JSON으로 변환할 때 인코딩 이슈를 최소화
         data_json = df.to_json(orient='records', force_ascii=False)
-        now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+        # 중복 체크 후 업데이트
         records = ws.get_all_records()
         row_idx = -1
         for i, r in enumerate(records):
-            if str(r.get('project_name')) == str(project_name):
+            if str(r.get('project_name', '')) == str(project_name):
                 row_idx = i + 2
                 break
+
         if row_idx != -1:
-            ws.update(f"A{row_idx}:C{row_idx}", [[project_name, now_str, data_json]])
+            ws.update(f"A{row_idx}:C{row_idx}",
+                      [[project_name, datetime.now().strftime("%Y-%m-%d %H:%M:%S"), data_json]])
         else:
-            ws.append_row([project_name, now_str, data_json])
+            ws.append_row([project_name, datetime.now().strftime("%Y-%m-%d %H:%M:%S"), data_json])
         return True
     except Exception as e:
         return str(e)
@@ -37,11 +41,13 @@ def load_project_from_cloud(project_name):
     try:
         doc = db.get_sheet()
         ws = doc.worksheet("프로젝트저장소")
-        records = ws.get_all_records()
-        for r in records:
-            if str(r.get('project_name')) == str(project_name):
-                df = pd.read_json(io.StringIO(r.get('data_json')), orient='records')
-                return df
+        # get_all_records() 대신 값을 직접 가져오는 방식이 더 안전할 수 있음
+        rows = ws.get_all_values()
+        for row in rows[1:]: # 헤더 제외
+            if row[0] == project_name:
+                data_json = row[2]
+                if not data_json: return None
+                return pd.read_json(io.StringIO(data_json), orient='records')
         return None
     except Exception as e:
         return str(e)
