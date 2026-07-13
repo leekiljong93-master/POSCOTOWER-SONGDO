@@ -4,9 +4,29 @@ from google.oauth2.service_account import Credentials
 import json
 import pandas as pd
 
+
 def get_gsheet_client():
-    creds_json = json.loads(st.secrets["GOOGLE_CREDENTIALS"])
-    scopes = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
+    # 1. 로컬 파일(service_account.json) 우선 탐색
+    if os.path.exists("service_account.json"):
+        with open("service_account.json", "r", encoding="utf-8") as f:
+            creds_json = json.load(f)
+    # 2. 파일이 없으면 Streamlit Secrets(클라우드 배포용) 사용
+    else:
+        try:
+            creds_info = st.secrets["GOOGLE_CREDENTIALS"]
+            if isinstance(creds_info, str):
+                creds_json = json.loads(creds_info)
+            else:
+                creds_json = dict(creds_info)
+        except Exception as e:
+            st.error("인증 정보를 찾을 수 없습니다: service_account.json 파일을 확인하거나 Secrets 설정을 확인하세요.")
+            raise e
+
+    scopes = [
+        "https://www.googleapis.com/auth/spreadsheets",
+        "https://www.googleapis.com/auth/drive"
+    ]
+
     creds = Credentials.from_service_account_info(creds_json, scopes=scopes)
     return gspread.authorize(creds)
 
