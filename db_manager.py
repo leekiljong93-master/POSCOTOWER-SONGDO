@@ -62,11 +62,17 @@ def get_unit_price(item_name):
         return float(item.iloc[0]['unit_price']) if not item.empty else 0.0
     except: return 0.0
 
+
 def sync_master_data_from_excel(file_path):
     try:
         if not os.path.exists(file_path):
             return {"status": "error", "message": "엑셀 파일을 찾을 수 없습니다."}
+
         df = pd.read_excel(file_path).fillna("")
+
+        # 👇 [핵심 해결 코드] 엑셀의 한글 제목을 DB가 인식하는 영문 컬럼명으로 강제 변환
+        df.columns = ["category_large", "category_mid", "item_name", "spec", "unit", "unit_price", "source"]
+
         doc = get_sheet()
         ws = doc.worksheet("기초DB")
         ws.clear()
