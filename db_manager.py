@@ -1,58 +1,55 @@
-import sqlite3
+import streamlit as st
+import gspread
+from google.oauth2.service_account import Credentials
+import json
 import pandas as pd
-import os
 
-DB_NAME = "design_system.db"
+def get_gsheet_client():
+    creds_json = json.loads(st.secrets["GOOGLE_CREDENTIALS"])
+    scopes = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
+    creds = Credentials.from_service_account_info(creds_json, scopes=scopes)
+    return gspread.authorize(creds)
 
+def get_sheet():
+    client = get_gsheet_client()
+    return client.open_by_url(st.secrets["SPREADSHEET_URL"])
 
 def init_db():
-    # 파일이 없으면 자동으로 생성되고, 테이블이 없으면 생성됨
-    conn = sqlite3.connect(DB_NAME)
-    c = conn.cursor()
-    c.execute('''CREATE TABLE IF NOT EXISTS master_data 
-                 (category_large TEXT, category_mid TEXT, item_name TEXT, 
-                  spec TEXT, unit TEXT, unit_price REAL, source TEXT)''')
-    conn.commit()
-    conn.close()
-
+    try:
+        doc = get_sheet()
+        # 기초DB 탭 확인
+        try: doc.worksheet("기초DB")
+        except: doc.add_worksheet(title="기초DB", rows="1000", cols="10").append_row(["category_large", "category_mid", "item_name", "spec", "unit", "unit_price", "source"])
+        # 프로젝트저장소 탭 확인
+        try: doc.worksheet("프로젝트저장소")
+        except: doc.add_worksheet(title="프로젝트저장소", rows="1000", cols="10").append_row(["project_name", "date", "data_json"])
+    except: pass
 
 def get_filtered_master_items(category_large="전체", search_keyword=""):
-    conn = sqlite3.connect(DB_NAME)
-    # 한글 컬럼명 대신 DB 테이블의 컬럼명으로 조회
-    query = "SELECT * FROM master_data WHERE 1=1"
-
-    if category_large != "전체":
-        query += f" AND category_large = '{category_large}'"
-    if search_keyword:
-        query += f" AND item_name LIKE '%{search_keyword}%'"
-
-    df = pd.read_sql_query(query, conn)
-    conn.close()
-    return df
-
-
-def sync_master_data_from_excel(file_path):
-    if not os.path.exists(file_path):
-        return {"status": "error", "message": "엑셀 파일을 찾을 수 없습니다."}
     try:
-        df = pd.read_excel(file_path)
-        # 엑셀 헤더를 DB 테이블 컬럼명에 강제 매핑
-        df.columns = ['category_large', 'category_mid', 'item_name', 'spec', 'unit', 'unit_price', 'source']
-
-        conn = sqlite3.connect(DB_NAME)
-        df.to_sql("master_data", conn, if_exists="replace", index=False)
-        conn.close()
-        return {"status": "success", "message": "데이터 동기화 완료!"}
-    except Exception as e:
-        return {"status": "error", "message": f"오류 발생: {str(e)}"}
-
+        doc = get_sheet()
+        ws = doc.worksheet("기초DB")
+        df = pd.DataFrame(ws.get_all_records())
+        if df.empty: return df
+        if category_large != "전체": df = df[df['category_large'] == category_large]
+        if search_keyword: df = df[df['item_name'].str.contains(search_keyword, na=False)]
+        return df
+    except: return pd.DataFrame(columns=["category_large", "category_mid", "item_name", "spec", "unit", "unit_price", "source"])
 
 def get_unit_price(item_name):
-    conn = sqlite3.connect(DB_NAME)
-    # item_name에 해당하는 단가를 가져오는 쿼리
-    query = f"SELECT unit_price FROM master_data WHERE item_name = '{item_name}' LIMIT 1"
-    df = pd.read_sql_query(query, conn)
-    conn.close()
-    return float(df['unit_price'][0]) if not df.empty else 0.0
+    try:
+        df = get_filtered_master_items()
+        item = df[df['item_name'] == item_name]
+        return float(item.iloc[0]['unit_price']) if not item.empty else 0.0
+    except: return 0.0
 
-init_db()
+def sync_master_data_from_excel(file_path):
+    try:
+        df = pd.read_excel(file_path)
+        doc = get_sheet()
+        ws = doc.worksheet("기초DB")
+        ws.clear()
+        ws.update([df.columns.values.tolist()] + df.fillna("").values.tolist())
+        return {"status": "success", "message": "동기화 완료!"}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}

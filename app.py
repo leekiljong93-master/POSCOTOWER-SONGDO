@@ -9,8 +9,45 @@ import db_manager as db
 st.set_page_config(page_title="포타송 설계서 작성(Ver.260703)", page_icon="🏗️", layout="wide")
 st.title("🏗️ 포타송 설계서 작성(Ver.260703)")
 
+# --- [신규 추가] DB 초기화 (서버 실행 시 자동 생성) ---
+db.init_db()
 
-# --- [신규 추가] 프로젝트 삭제 확인 팝업창 함수 ---
+# --- [신규 추가] 클라우드 저장 및 불러오기 함수 ---
+def save_project_to_cloud(project_name, df):
+    try:
+        doc = db.get_sheet()
+        ws = doc.worksheet("프로젝트저장소")
+        data_json = df.to_json(orient='records', force_ascii=False)
+        now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        records = ws.get_all_records()
+        row_idx = -1
+        for i, r in enumerate(records):
+            if str(r.get('project_name')) == str(project_name):
+                row_idx = i + 2
+                break
+        if row_idx != -1:
+            ws.update(f"A{row_idx}:C{row_idx}", [[project_name, now_str, data_json]])
+        else:
+            ws.append_row([project_name, now_str, data_json])
+        return True
+    except Exception as e:
+        return str(e)
+
+def load_project_from_cloud(project_name):
+    try:
+        doc = db.get_sheet()
+        ws = doc.worksheet("프로젝트저장소")
+        records = ws.get_all_records()
+        for r in records:
+            if str(r.get('project_name')) == str(project_name):
+                df = pd.read_json(io.StringIO(r.get('data_json')), orient='records')
+                return df
+        return None
+    except Exception as e:
+        return str(e)
+
+
+# --- [기존 유지] 프로젝트 삭제 확인 팝업창 함수 ---
 @st.dialog("⚠️ 프로젝트 삭제 확인")
 def delete_confirmation(project_name):
     st.warning(f"정말로 '{project_name}' 프로젝트를 삭제하시겠습니까?")
@@ -64,6 +101,36 @@ if len(st.session_state.projects) > 1:
 else:
     st.sidebar.button("🗑️ 현재 프로젝트 삭제", disabled=True, use_container_width=True, help="프로젝트가 1개일 때는 삭제할 수 없습니다.")
 # ---------------------------------------------------------
+
+
+# --- [신규 추가] 클라우드 DB 연동 버튼 UI ---
+st.sidebar.divider()
+st.sidebar.subheader("☁️ 클라우드 DB 보관소")
+if st.sidebar.button("💾 현재 프로젝트 클라우드에 저장", use_container_width=True):
+    with st.spinner("구글 시트에 안전하게 기록 중입니다..."):
+        st.session_state.projects[st.session_state.current_project] = st.session_state.estimate_data.copy()
+        res = save_project_to_cloud(st.session_state.current_project, st.session_state.estimate_data)
+        if res is True:
+            st.sidebar.success("클라우드 저장이 완료되었습니다!")
+        else:
+            st.sidebar.error(f"저장 실패: {res}")
+
+cloud_proj_to_load = st.sidebar.text_input("불러올 프로젝트명 검색", placeholder="예: 기본 프로젝트")
+if st.sidebar.button("🔄 클라우드 DB에서 불러오기", use_container_width=True) and cloud_proj_to_load:
+    with st.spinner("클라우드에서 데이터를 찾는 중입니다..."):
+        loaded_df = load_project_from_cloud(cloud_proj_to_load)
+        if loaded_df is None:
+            st.sidebar.warning("해당 이름으로 저장된 프로젝트가 없습니다.")
+        elif isinstance(loaded_df, str):
+            st.sidebar.error(f"불러오기 실패: {loaded_df}")
+        else:
+            # 불러온 데이터로 세션 상태 덮어쓰기
+            st.session_state.projects[cloud_proj_to_load] = loaded_df
+            st.session_state.current_project = cloud_proj_to_load
+            st.session_state.estimate_data = loaded_df.copy()
+            st.rerun()
+# ---------------------------------------------------------
+
 
 st.sidebar.divider()
 
