@@ -101,3 +101,26 @@ def get_cloud_projects_list():
         import streamlit as st
         st.error(f"목록을 불러오는 중 오류 발생: {e}")
         return []
+
+
+# db_manager.py 파일 맨 아래에 추가하세요
+def delete_project_from_cloud(project_name):
+    try:
+        doc = get_sheet()
+        ws = doc.worksheet("프로젝트저장소")
+        # 첫 번째 열(프로젝트명)의 모든 값을 가져옴
+        cells = ws.col_values(1)
+
+        row_idx = -1
+        for idx, val in enumerate(cells):
+            if str(val) == str(project_name):
+                row_idx = idx + 1  # 구글 시트는 인덱스가 1부터 시작합니다.
+                break
+
+        if row_idx != -1:
+            ws.delete_rows(row_idx)
+            return True
+        else:
+            return "클라우드에서 해당 프로젝트를 찾을 수 없습니다."
+    except Exception as e:
+        return str(e)

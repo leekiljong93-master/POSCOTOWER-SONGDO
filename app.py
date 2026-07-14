@@ -63,6 +63,25 @@ def delete_confirmation(project_name):
     if col2.button("취소", width="stretch"):
         st.rerun()
 
+@st.dialog("⚠️ 클라우드 프로젝트 삭제 확인")
+def delete_cloud_confirmation(project_name):
+    st.warning(f"정말로 클라우드(구글 시트) 보관소에서 '{project_name}'을 삭제하시겠습니까?")
+    st.write("이 작업은 구글 시트에서 데이터를 영구히 지우며, 다른 사용자도 더 이상 이 프로젝트를 볼 수 없습니다.")
+
+    col1, col2 = st.columns(2)
+    if col1.button("클라우드에서 완전히 삭제", width="stretch"):
+        with st.spinner("클라우드 데이터를 삭제하는 중..."):
+            res = db.delete_project_from_cloud(project_name)
+            if res is True:
+                st.success("클라우드 보관소에서 성공적으로 삭제되었습니다!")
+                # 삭제 후 사이드바 목록을 자동으로 즉시 갱신
+                st.session_state.cloud_project_list = db.get_cloud_projects_list()
+                st.rerun()
+            else:
+                st.error(f"삭제 실패: {res}")
+
+    if col2.button("취소", width="stretch"):
+        st.rerun()
 
 if 'projects' not in st.session_state:
     st.session_state.projects = {
@@ -136,6 +155,8 @@ if st.session_state.cloud_project_list:
                 st.session_state.estimate_data = loaded_df.copy()
                 st.sidebar.success(f"'{selected_project_name}' 로드 완료!")
                 st.rerun()
+            if st.sidebar.button("🗑️ 선택한 프로젝트 클라우드에서 삭제", width="stretch"):
+                delete_cloud_confirmation(selected_project_name)
 else:
     st.sidebar.info("👆 위 '목록 갱신/조회' 버튼을 눌러 프로젝트 목록을 확인하세요.")
 
