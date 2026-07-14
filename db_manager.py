@@ -81,3 +81,15 @@ def sync_master_data_from_excel(file_path):
         return {"status": "success", "message": "동기화 완료!"}
     except Exception as e:
         return {"status": "error", "message": str(e)}
+
+def get_cloud_projects_list():
+    try:
+        doc = get_sheet()
+        ws = doc.worksheet("프로젝트저장소")
+        # 프로젝트저장소 시트의 첫 번째 열(프로젝트명)을 가져옴
+        data = ws.col_values(1)
+        # 첫 번째 행은 헤더(project_name)이므로 제외하고 리스트로 반환
+        return data[1:] if len(data) > 1 else []
+    except Exception as e:
+        st.error(f"프로젝트 목록을 불러오는 중 오류 발생: {e}")
+        return []
