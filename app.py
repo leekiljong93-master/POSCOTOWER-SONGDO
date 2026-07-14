@@ -3,24 +3,21 @@ import pandas as pd
 import plotly.express as px
 from datetime import date, datetime
 import io
-import os  # <--- 폴더/파일 경로를 찾기 위해 추가됨
+import os
 import db_manager as db
 
 st.set_page_config(page_title="포타송 설계서 작성(Ver.260703)", page_icon="🏗️", layout="wide")
 st.title("🏗️ 포타송 설계서 작성(Ver.260703)")
 
-# --- [신규 추가] DB 초기화 (서버 실행 시 자동 생성) ---
 db.init_db()
 
-# --- [신규 추가] 클라우드 저장 및 불러오기 함수 ---
+
 def save_project_to_cloud(project_name, df):
     try:
         doc = db.get_sheet()
         ws = doc.worksheet("프로젝트저장소")
-        # JSON으로 변환할 때 인코딩 이슈를 최소화
         data_json = df.to_json(orient='records', force_ascii=False)
 
-        # 중복 체크 후 업데이트
         records = ws.get_all_records()
         row_idx = -1
         for i, r in enumerate(records):
@@ -37,13 +34,13 @@ def save_project_to_cloud(project_name, df):
     except Exception as e:
         return str(e)
 
+
 def load_project_from_cloud(project_name):
     try:
         doc = db.get_sheet()
         ws = doc.worksheet("프로젝트저장소")
-        # get_all_records() 대신 값을 직접 가져오는 방식이 더 안전할 수 있음
         rows = ws.get_all_values()
-        for row in rows[1:]: # 헤더 제외
+        for row in rows[1:]:
             if row[0] == project_name:
                 data_json = row[2]
                 if not data_json: return None
@@ -53,21 +50,19 @@ def load_project_from_cloud(project_name):
         return str(e)
 
 
-# --- [기존 유지] 프로젝트 삭제 확인 팝업창 함수 ---
 @st.dialog("⚠️ 프로젝트 삭제 확인")
 def delete_confirmation(project_name):
     st.warning(f"정말로 '{project_name}' 프로젝트를 삭제하시겠습니까?")
     st.write("삭제된 데이터는 복구할 수 없습니다.")
     col1, col2 = st.columns(2)
-    if col1.button("삭제하기", use_container_width=True):
+    if col1.button("삭제하기", width="stretch"):
         del st.session_state.projects[project_name]
         st.session_state.current_project = list(st.session_state.projects.keys())[0]
         st.session_state.estimate_data = st.session_state.projects[st.session_state.current_project].copy()
         st.rerun()
-    if col2.button("취소", use_container_width=True):
+    if col2.button("취소", width="stretch"):
         st.rerun()
 
-# --------------------------------------------------
 
 if 'projects' not in st.session_state:
     st.session_state.projects = {
@@ -81,7 +76,7 @@ if 'current_project' in st.session_state and 'estimate_data' in st.session_state
 
 st.sidebar.subheader("📁 설계서 작성")
 new_project = st.sidebar.text_input("새 프로젝트명 입력", placeholder="예: 포스코타워-송도 환경개선")
-if st.sidebar.button("➕ 새 프로젝트 생성", use_container_width=True) and new_project:
+if st.sidebar.button("➕ 새 프로젝트 생성", width="stretch") and new_project:
     if new_project not in st.session_state.projects:
         st.session_state.projects[new_project] = pd.DataFrame(
             columns=["공종명", "구분", "단위", "단가", "수량", "합계", "시작일", "종료일"])
@@ -100,19 +95,51 @@ if selected_project != st.session_state.current_project:
     st.session_state.estimate_data = st.session_state.projects[selected_project].copy()
     st.rerun()
 
-# --- 프로젝트 삭제 버튼 로직 ---
 if len(st.session_state.projects) > 1:
-    if st.sidebar.button("🗑️ 현재 프로젝트 삭제", use_container_width=True):
+    if st.sidebar.button("🗑️ 현재 프로젝트 삭제", width="stretch"):
         delete_confirmation(st.session_state.current_project)
 else:
-    st.sidebar.button("🗑️ 현재 프로젝트 삭제", disabled=True, use_container_width=True, help="프로젝트가 1개일 때는 삭제할 수 없습니다.")
-# ---------------------------------------------------------
+    st.sidebar.button("🗑️ 현재 프로젝트 삭제", disabled=True, width="stretch", help="프로젝트가 1개일 때는 삭제할 수 없습니다.")
 
+if "cloud_project_list" not in st.session_state:
+    st.session_state.cloud_project_list = []
 
-# --- [신규 추가] 클라우드 DB 연동 버튼 UI ---
 st.sidebar.divider()
 st.sidebar.subheader("☁️ 클라우드 DB 보관소")
-if st.sidebar.button("💾 현재 프로젝트 클라우드에 저장", use_container_width=True):
+
+if st.sidebar.button("🔄 클라우드 목록 갱신/조회", width="stretch"):
+    with st.spinner("구글 시트에서 프로젝트 목록을 불러오는 중..."):
+        st.session_state.cloud_project_list = db.get_cloud_projects_list()
+        if not st.session_state.cloud_project_list:
+            st.sidebar.info("클라우드에 저장된 프로젝트가 없습니다.")
+        else:
+            st.sidebar.success(f"총 {len(st.session_state.cloud_project_list)}개의 프로젝트를 불러왔습니다!")
+
+if st.session_state.cloud_project_list:
+    project_options = {
+        f"📂 {proj['name']} ({proj['date']})": proj['name']
+        for proj in st.session_state.cloud_project_list
+    }
+    selected_option = st.sidebar.selectbox("불러올 프로젝트 선택", options=list(project_options.keys()))
+    selected_project_name = project_options[selected_option]
+
+    if st.sidebar.button("📥 선택한 프로젝트 불러오기", width="stretch"):
+        with st.spinner(f"'{selected_project_name}' 데이터를 가져오는 중..."):
+            loaded_df = load_project_from_cloud(selected_project_name)
+            if loaded_df is None:
+                st.sidebar.warning("해당 프로젝트의 데이터를 찾을 수 없습니다.")
+            elif isinstance(loaded_df, str):
+                st.sidebar.error(f"불러오기 실패: {loaded_df}")
+            else:
+                st.session_state.projects[selected_project_name] = loaded_df
+                st.session_state.current_project = selected_project_name
+                st.session_state.estimate_data = loaded_df.copy()
+                st.sidebar.success(f"'{selected_project_name}' 로드 완료!")
+                st.rerun()
+else:
+    st.sidebar.info("👆 위 '목록 갱신/조회' 버튼을 눌러 프로젝트 목록을 확인하세요.")
+
+if st.sidebar.button("💾 현재 프로젝트 클라우드에 저장", width="stretch"):
     with st.spinner("구글 시트에 안전하게 기록 중입니다..."):
         st.session_state.projects[st.session_state.current_project] = st.session_state.estimate_data.copy()
         res = save_project_to_cloud(st.session_state.current_project, st.session_state.estimate_data)
@@ -120,23 +147,6 @@ if st.sidebar.button("💾 현재 프로젝트 클라우드에 저장", use_cont
             st.sidebar.success("클라우드 저장이 완료되었습니다!")
         else:
             st.sidebar.error(f"저장 실패: {res}")
-
-cloud_proj_to_load = st.sidebar.text_input("불러올 프로젝트명 검색", placeholder="예: 기본 프로젝트")
-if st.sidebar.button("🔄 클라우드 DB에서 불러오기", use_container_width=True) and cloud_proj_to_load:
-    with st.spinner("클라우드에서 데이터를 찾는 중입니다..."):
-        loaded_df = load_project_from_cloud(cloud_proj_to_load)
-        if loaded_df is None:
-            st.sidebar.warning("해당 이름으로 저장된 프로젝트가 없습니다.")
-        elif isinstance(loaded_df, str):
-            st.sidebar.error(f"불러오기 실패: {loaded_df}")
-        else:
-            # 불러온 데이터로 세션 상태 덮어쓰기
-            st.session_state.projects[cloud_proj_to_load] = loaded_df
-            st.session_state.current_project = cloud_proj_to_load
-            st.session_state.estimate_data = loaded_df.copy()
-            st.rerun()
-# ---------------------------------------------------------
-
 
 st.sidebar.divider()
 
@@ -169,19 +179,18 @@ with tab_dash:
             st.markdown("**📊 자재/노무/장비 금액 비중**")
             fig_pie = px.pie(df_dash, values='합계', names='구분', hole=0.4,
                              color_discrete_sequence=px.colors.qualitative.Pastel)
-            st.plotly_chart(fig_pie, use_container_width=True)
+            st.plotly_chart(fig_pie, width="stretch")
 
         with col_chart2:
             st.markdown("**📈 주요 공종별 투입 금액**")
             fig_bar = px.bar(df_dash, x='공종명', y='합계', color='구분', text_auto='.2s',
                              color_discrete_sequence=px.colors.qualitative.Pastel)
-            st.plotly_chart(fig_bar, use_container_width=True)
+            st.plotly_chart(fig_bar, width="stretch")
 
 with tab1:
     st.subheader("🔍 1. 자재 / 인건비 / 장비 / 세트 입력")
     col1, col2, col3, col4 = st.columns(4)
 
-    # 1. 자재 컬럼
     with col1:
         st.markdown("##### 🧱 자재")
         df_mat = db.get_filtered_master_items(category_large="자재비")
@@ -198,7 +207,6 @@ with tab1:
             st.session_state.estimate_data = pd.concat([st.session_state.estimate_data, new_row], ignore_index=True)
             st.rerun()
 
-    # 2. 인건비 컬럼
     with col2:
         st.markdown("##### 👷 인건비")
         df_lab = db.get_filtered_master_items(category_large="인건비")
@@ -215,7 +223,6 @@ with tab1:
             st.session_state.estimate_data = pd.concat([st.session_state.estimate_data, new_row], ignore_index=True)
             st.rerun()
 
-    # 3. 장비 컬럼
     with col3:
         st.markdown("##### 🏗️ 장비")
         df_eq = db.get_filtered_master_items(category_large="장비비")
@@ -232,13 +239,12 @@ with tab1:
             st.session_state.estimate_data = pd.concat([st.session_state.estimate_data, new_row], ignore_index=True)
             st.rerun()
 
-    # 4. 세트 컬럼
     with col4:
         st.markdown("##### 📦 세트")
         df_set = db.get_filtered_master_items(category_large="세트")
         set_names = df_set['item_name'].tolist() if not df_set.empty else ["데이터 없음"]
         s_sel = st.selectbox("세트 선택", set_names, key="set_select")
-        st.write("") # 공간 맞춤
+        st.write("")
         st.write("")
         if st.button("세트 추가", key="set_add"):
             u_price = db.get_unit_price(s_sel)
@@ -267,7 +273,7 @@ with tab1:
             "시작일": st.column_config.DateColumn("시작일", format="YYYY-MM-DD"),
             "종료일": st.column_config.DateColumn("종료일", format="YYYY-MM-DD"),
         },
-        use_container_width=True,
+        width="stretch",
         hide_index=False
     )
 
@@ -288,9 +294,6 @@ with tab1:
 
     st.divider()
 
-    # ==========================================
-    # [UI 개선] 갑지 항목 정렬 및 기호(들여쓰기) 완벽 적용
-    # ==========================================
     st.subheader("📊 3. 조달청 기준 원가계산서 (갑지 - 제비율 상세)")
 
     with st.expander("⚙️ 제비율(%) 설정 (클릭하여 수정 가능)", expanded=True):
@@ -302,26 +305,24 @@ with tab1:
             rate_goyong = st.number_input("고용보험료율(%)", value=1.15, step=0.1)
         with r2:
             rate_health = st.number_input("국민건강보험료율(%)", value=3.545, step=0.1)
-            rate_elderly = st.number_input("노인장기요양보험료율(%)", value=12.95, step=0.1, help="건강보험료 산출액에 곱해집니다.")
+            rate_elderly = st.number_input("노인장기요양보험료율(%)", value=12.95, step=0.1)
             rate_pension = st.number_input("국민연금보험료율(%)", value=4.5, step=0.1)
         with r3:
             rate_retire = st.number_input("퇴직공제부금비율(%)", value=2.31, step=0.1)
             rate_safety = st.number_input("산업안전보건비율(%)", value=1.86, step=0.1)
-            rate_env = st.number_input("환경보전비율(%)", value=0.9, step=0.1, help="직접공사비(재+노+경) 합계에 곱해집니다.")
+            rate_env = st.number_input("환경보전비율(%)", value=0.9, step=0.1)
         with r4:
             rate_etc_exp = st.number_input("기타경비율(%)", value=5.5, step=0.1)
             rate_general_admin = st.number_input("일반관리비율(%)", value=5.0, step=0.1)
             rate_profit = st.number_input("이윤율(%)", value=10.0, step=0.1)
             rate_tax = st.number_input("부가가치세율(%)", value=10.0, step=0.1)
 
-    # 1. 항목별 금액 합산 (직접비)
     df_calc = st.session_state.estimate_data
     direct_material = df_calc[df_calc['구분'] == '자재']['합계'].sum() if not df_calc.empty else 0
     direct_labor = df_calc[df_calc['구분'] == '노무']['합계'].sum() if not df_calc.empty else 0
     equipment_exp = df_calc[df_calc['구분'] == '장비']['합계'].sum() if not df_calc.empty else 0
     direct_cost_total = direct_material + direct_labor + equipment_exp
 
-    # 2. 간접비 및 보험료 계산
     indirect_labor = int(direct_labor * (rate_indirect_labor / 100))
     total_labor = direct_labor + indirect_labor
 
@@ -333,7 +334,6 @@ with tab1:
     retire_deduct = int(direct_labor * (rate_retire / 100))
     env_cost = int(direct_cost_total * (rate_env / 100))
 
-    # 산업안전보건관리비 산출 (2천만원 미만 제외 로직 유지)
     safety_base = int((direct_material + direct_labor) * (rate_safety / 100))
     temp_expense = equipment_exp + sanjae_ins + goyong_ins + health_ins + elderly_ins + pension_ins + retire_deduct + env_cost
     temp_etc = int((direct_material + total_labor) * (rate_etc_exp / 100))
@@ -352,7 +352,6 @@ with tab1:
     etc_exp = int((direct_material + total_labor) * (rate_etc_exp / 100))
     total_expense = equipment_exp + sanjae_ins + goyong_ins + health_ins + elderly_ins + pension_ins + retire_deduct + safety_mgt + env_cost + etc_exp
 
-    # 3. 원가 합산
     net_construction_cost = direct_material + total_labor + total_expense
     general_admin = int(net_construction_cost * (rate_general_admin / 100))
     profit = int((total_labor + total_expense + general_admin) * (rate_profit / 100))
@@ -361,7 +360,6 @@ with tab1:
     vat = int(supply_value * (rate_tax / 100))
     total_contract_price = supply_value + vat
 
-    # 4. 표 데이터 구성 (기호와 공백문자(\u2003)를 활용한 계층형 UI 적용)
     summary_data = [
         {"비목": "1. 재료비", "금액(원)": f"{direct_material:,}", "산출근거": "직접재료비 합계"},
         {"비목": " └ 직접재료비", "금액(원)": f"{direct_material:,}", "산출근거": "직접재료비 총액"},
@@ -391,7 +389,7 @@ with tab1:
 
     st.dataframe(
         summary_df,
-        use_container_width=True,
+        width="stretch",
         hide_index=True,
         column_config={
             "비목": st.column_config.TextColumn("비목 (Category)", width="medium"),
@@ -418,19 +416,15 @@ with tab2:
 
         fig = px.timeline(df_gantt, x_start="시작일", x_end="종료일", y="공종명", color="구분", title="프로젝트 세부 공정표")
         fig.update_yaxes(autorange="reversed")
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width="stretch")
     else:
         st.warning("먼저 '설계 및 원가계산' 탭에서 공종을 추가해 주세요.")
 
-# ==========================================
-# [완벽 교체] 탭 3: 엑셀 동기화 및 실시간 검색 UI 적용 완료
-# ==========================================
 with tab3:
     st.subheader("⚙️ 기초 데이터 동기화 (Excel 연동)")
     st.info("💡 'data/master_data.xlsx' 파일에 데이터를 추가/수정한 후, 아래 버튼을 눌러 시스템에 완벽하게 반영하세요.")
 
-    # 동기화 실행 버튼
-    if st.button("🔄 마스터 데이터 DB 동기화 실행", type="primary", use_container_width=True):
+    if st.button("🔄 마스터 데이터 DB 동기화 실행", type="primary", width="stretch"):
         excel_path = os.path.join("data", "master_data.xlsx")
         result = db.sync_master_data_from_excel(excel_path)
 
@@ -443,15 +437,12 @@ with tab3:
 
     st.subheader("🔍 현재 시스템에 반영된 기준 데이터 확인")
 
-    # 데이터가 수만 건일 때를 대비한 초고속 필터링 UI
     col_f1, col_f2 = st.columns([1, 3])
     with col_f1:
         cat_filter = st.selectbox("대분류 필터", ["전체", "인건비", "자재비", "장비비"])
     with col_f2:
         search_kw = st.text_input("항목명 또는 중분류 키워드 검색 (예: 보통인부, 레미콘)")
 
-    # db_manager의 고속 검색 함수 호출
     df_master = db.get_filtered_master_items(category_large=cat_filter, search_keyword=search_kw)
 
-    # 결과를 예쁜 표 형태로 출력
-    st.dataframe(df_master, use_container_width=True, hide_index=True)
+    st.dataframe(df_master, width="stretch", hide_index=True)
