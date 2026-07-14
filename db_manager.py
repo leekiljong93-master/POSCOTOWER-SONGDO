@@ -5,9 +5,6 @@ import json
 import pandas as pd
 import os
 
-@st.cache_data(ttl=300)
-def get_filtered_master_items(category_large="전체", search_keyword=""):
-
 def get_gsheet_client():
     # 1. 로컬 환경 확인: service_account.json 파일이 있으면 우선 사용
     if os.path.exists("service_account.json"):
@@ -46,6 +43,8 @@ def init_db():
         except: doc.add_worksheet(title="프로젝트저장소", rows="1000", cols="10").append_row(["project_name", "date", "data_json"])
     except: pass
 
+# 👇 구글 API 호출 제한(429 에러) 방지를 위해 5분(300초) 동안 데이터를 캐싱합니다.
+@st.cache_data(ttl=300)
 def get_filtered_master_items(category_large="전체", search_keyword=""):
     try:
         doc = get_sheet()
@@ -73,7 +72,7 @@ def sync_master_data_from_excel(file_path):
 
         df = pd.read_excel(file_path).fillna("")
 
-        # 👇 [핵심 해결 코드] 엑셀의 한글 제목을 DB가 인식하는 영문 컬럼명으로 강제 변환
+        # 엑셀의 한글 제목을 DB가 인식하는 영문 컬럼명으로 강제 변환
         df.columns = ["category_large", "category_mid", "item_name", "spec", "unit", "unit_price", "source"]
 
         doc = get_sheet()
@@ -104,7 +103,6 @@ def get_cloud_projects_list():
         import streamlit as st
         st.error(f"목록을 불러오는 중 오류 발생: {e}")
         return []
-
 
 def delete_project_from_cloud(project_name):
     try:
