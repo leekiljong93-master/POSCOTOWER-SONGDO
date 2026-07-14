@@ -306,6 +306,19 @@ with tab1:
     st.subheader(f"📄 2. 세부 내역서 (을지) - {st.session_state.current_project}")
     st.info("💡 표 맨 왼쪽의 인덱스(번호) 부분을 클릭하여 체크한 후, 키보드의 'Delete' 키를 누르면 해당 항목이 삭제됩니다.")
 
+    if not st.session_state.estimate_data.empty:
+        # 1. 숫자형 컬럼 강제 변환 (문자열이 섞여 있으면 숫자로 바꾸고, 에러나면 0으로 처리)
+        for col in ["단가", "수량", "합계"]:
+            if col in st.session_state.estimate_data.columns:
+                st.session_state.estimate_data[col] = pd.to_numeric(st.session_state.estimate_data[col],
+                                                                    errors='coerce').fillna(0)
+
+        # 2. 날짜형 컬럼 강제 변환
+        for col in ["시작일", "종료일"]:
+            if col in st.session_state.estimate_data.columns:
+                st.session_state.estimate_data[col] = pd.to_datetime(st.session_state.estimate_data[col],
+                                                                     errors='coerce')
+
     edited_df = st.data_editor(
         st.session_state.estimate_data,
         num_rows="dynamic",
