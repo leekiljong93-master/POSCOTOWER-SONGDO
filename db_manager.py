@@ -86,10 +86,18 @@ def get_cloud_projects_list():
     try:
         doc = get_sheet()
         ws = doc.worksheet("프로젝트저장소")
-        # 프로젝트저장소 시트의 첫 번째 열(프로젝트명)을 가져옴
-        data = ws.col_values(1)
-        # 첫 번째 행은 헤더(project_name)이므로 제외하고 리스트로 반환
-        return data[1:] if len(data) > 1 else []
+        # 시트의 모든 데이터를 딕셔너리 형태로 가져옴
+        records = ws.get_all_records()
+
+        result = []
+        for r in records:
+            # app.py가 요구하는 'name'과 'date' 형식의 딕셔너리로 변환
+            result.append({
+                "name": str(r.get("project_name", "이름없음")),
+                "date": str(r.get("date", ""))
+            })
+        return result
     except Exception as e:
-        st.error(f"프로젝트 목록을 불러오는 중 오류 발생: {e}")
+        import streamlit as st
+        st.error(f"목록을 불러오는 중 오류 발생: {e}")
         return []
