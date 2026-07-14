@@ -49,18 +49,26 @@ def load_project_from_cloud(project_name):
     except Exception as e:
         return str(e)
 
-
 @st.dialog("⚠️ 프로젝트 삭제 확인")
 def delete_confirmation(project_name):
     st.warning(f"정말로 '{project_name}' 프로젝트를 삭제하시겠습니까?")
     st.write("삭제된 데이터는 복구할 수 없습니다.")
     col1, col2 = st.columns(2)
-    if col1.button("삭제하기", width="stretch"):
+
+    if col1.button("삭제하기", use_container_width=True):
+        # 1. 세션 상태에서 삭제
         del st.session_state.projects[project_name]
+
+        # 2. 클라우드 DB에서도 삭제 (추가된 부분)
+        db.delete_project_from_cloud(project_name)
+
+        # UI 갱신 로직
         st.session_state.current_project = list(st.session_state.projects.keys())[0]
         st.session_state.estimate_data = st.session_state.projects[st.session_state.current_project].copy()
+        st.success(f"'{project_name}' 프로젝트가 클라우드에서 삭제되었습니다.")
         st.rerun()
-    if col2.button("취소", width="stretch"):
+
+    if col2.button("취소", use_container_width=True):
         st.rerun()
 
 @st.dialog("⚠️ 클라우드 프로젝트 삭제 확인")

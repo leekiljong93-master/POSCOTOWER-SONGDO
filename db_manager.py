@@ -124,3 +124,17 @@ def delete_project_from_cloud(project_name):
             return "클라우드에서 해당 프로젝트를 찾을 수 없습니다."
     except Exception as e:
         return str(e)
+
+def delete_project_from_cloud(project_name):
+    try:
+        doc = get_sheet()
+        ws = doc.worksheet("프로젝트저장소")
+        # 데이터 전체를 가져온 뒤, 해당 프로젝트명이 포함된 행 찾기
+        cells = ws.findall(project_name)
+        for cell in cells:
+            # 1열(project_name)에 일치하는 경우 해당 행 삭제
+            if cell.col == 1:
+                ws.delete_rows(cell.row)
+        return True
+    except Exception as e:
+        return str(e)
