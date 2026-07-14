@@ -5,6 +5,9 @@ import json
 import pandas as pd
 import os
 
+@st.cache_data(ttl=300)
+def get_filtered_master_items(category_large="전체", search_keyword=""):
+
 def get_gsheet_client():
     # 1. 로컬 환경 확인: service_account.json 파일이 있으면 우선 사용
     if os.path.exists("service_account.json"):
@@ -103,7 +106,6 @@ def get_cloud_projects_list():
         return []
 
 
-# db_manager.py 파일 맨 아래에 추가하세요
 def delete_project_from_cloud(project_name):
     try:
         doc = get_sheet()
@@ -112,6 +114,7 @@ def delete_project_from_cloud(project_name):
         cells = ws.col_values(1)
 
         row_idx = -1
+        # 전체를 다 지우지 않고, 정확히 이름이 일치하는 '첫 번째' 항목만 찾아 인덱스 기록 후 종료(break)
         for idx, val in enumerate(cells):
             if str(val) == str(project_name):
                 row_idx = idx + 1  # 구글 시트는 인덱스가 1부터 시작합니다.
@@ -122,19 +125,5 @@ def delete_project_from_cloud(project_name):
             return True
         else:
             return "클라우드에서 해당 프로젝트를 찾을 수 없습니다."
-    except Exception as e:
-        return str(e)
-
-def delete_project_from_cloud(project_name):
-    try:
-        doc = get_sheet()
-        ws = doc.worksheet("프로젝트저장소")
-        # 데이터 전체를 가져온 뒤, 해당 프로젝트명이 포함된 행 찾기
-        cells = ws.findall(project_name)
-        for cell in cells:
-            # 1열(project_name)에 일치하는 경우 해당 행 삭제
-            if cell.col == 1:
-                ws.delete_rows(cell.row)
-        return True
     except Exception as e:
         return str(e)
