@@ -51,28 +51,43 @@ def load_project_from_cloud(project_name):
 
 
 @st.dialog("⚠️ 프로젝트 삭제 확인")
-def delete_confirmation(project_name):
-    st.warning(f"정말로 '{project_name}' 프로젝트를 삭제하시겠습니까?")
 
-    col1, col2 = st.columns(2)
-    if col1.button("삭제하기"):
-        # 1. 메모리에서 삭제
+
+ef
+delete_confirmation(project_name):
+st.markdown(f"### 🗑️ 프로젝트 삭제")
+st.error(f"**'{project_name}'** 프로젝트를 정말로 삭제하시겠습니까?\n\n삭제된 데이터와 클라우드 DB 기록은 **절대 복구할 수 없습니다.**")
+
+st.write("")  # 시각적 안정감을 위한 빈 줄 여백 추가
+
+# 좁은 팝업창 안에서 버튼이 예쁘게 정렬되도록 세팅
+col1, col2 = st.columns(2)
+
+with col1:
+    # use_container_width=True 를 주어 쪼개진 칸에 버튼이 꽉 차게 만듭니다.
+    if st.button("🔥 정말 삭제하기", use_container_width=True):
+        # 1. 로컬 메모리(세션)에서 삭제
         if project_name in st.session_state.projects:
             del st.session_state.projects[project_name]
 
-        # 2. 클라우드에서 삭제 (DB 매니저 함수 호출)
+        # 2. 클라우드 구글 시트에서 삭제 (우리가 바꾼 단일 삭제 함수 호출)
         res = db.delete_project_from_cloud(project_name)
 
-        # 3. UI 상태 업데이트
+        # 3. 삭제 후 UI 상태 안전하게 복구
         if len(st.session_state.projects) > 0:
             st.session_state.current_project = list(st.session_state.projects.keys())[0]
             st.session_state.estimate_data = st.session_state.projects[st.session_state.current_project].copy()
+        else:
+            # 혹시나 마지막 남은 프로젝트까지 지웠을 경우를 대비한 안전장치
+            st.session_state.projects = {
+                "기본 프로젝트": pd.DataFrame(columns=["공종명", "구분", "단위", "단가", "수량", "합계", "시작일", "종료일"])}
+            st.session_state.current_project = "기본 프로젝트"
+            st.session_state.estimate_data = st.session_state.projects["기본 프로젝트"].copy()
+
         st.rerun()
 
-    if col2.button("취소"):
-        st.rerun()
-
-    if col2.button("취소", use_container_width=True):
+with col2:
+    if st.button("취소", use_container_width=True):
         st.rerun()
 
 @st.dialog("⚠️ 클라우드 프로젝트 삭제 확인")
