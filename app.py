@@ -6,8 +6,8 @@ import io
 import os
 import db_manager as db
 
-st.set_page_config(page_title="포타송 설계서 작성(Ver.260703)", page_icon="🏗️", layout="wide")
-st.title("🏗️ 포타송 설계서 작성(Ver.260703)")
+st.set_page_config(page_title="포타송 설계서 작성(Ver.260720)", page_icon="🏗️", layout="wide")
+st.title("🏗️ 포타송 설계서 작성(by.PI_Lee)")
 
 db.init_db()
 
@@ -55,27 +55,21 @@ def delete_confirmation(project_name):
     st.markdown(f"### 🗑️ 프로젝트 삭제")
     st.error(f"**'{project_name}'** 프로젝트를 정말로 삭제하시겠습니까?\n\n삭제된 데이터와 클라우드 DB 기록은 **절대 복구할 수 없습니다.**")
 
-    st.write("")  # 시각적 안정감을 위한 빈 줄 여백 추가
+    st.write("")
 
-    # 좁은 팝업창 안에서 버튼이 예쁘게 정렬되도록 세팅
     col1, col2 = st.columns(2)
 
     with col1:
-        # use_container_width=True 를 주어 쪼개진 칸에 버튼이 꽉 차게 만듭니다.
         if st.button("🔥 정말 삭제하기", use_container_width=True):
-            # 1. 로컬 메모리(세션)에서 삭제
             if project_name in st.session_state.projects:
                 del st.session_state.projects[project_name]
 
-            # 2. 클라우드 구글 시트에서 삭제 (우리가 바꾼 단일 삭제 함수 호출)
             res = db.delete_project_from_cloud(project_name)
 
-            # 3. 삭제 후 UI 상태 안전하게 복구
             if len(st.session_state.projects) > 0:
                 st.session_state.current_project = list(st.session_state.projects.keys())[0]
                 st.session_state.estimate_data = st.session_state.projects[st.session_state.current_project].copy()
             else:
-                # 혹시나 마지막 남은 프로젝트까지 지웠을 경우를 대비한 안전장치
                 st.session_state.projects = {
                     "기본 프로젝트": pd.DataFrame(columns=["공종명", "구분", "단위", "단가", "수량", "합계", "시작일", "종료일"])}
                 st.session_state.current_project = "기본 프로젝트"
@@ -86,6 +80,7 @@ def delete_confirmation(project_name):
     with col2:
         if st.button("취소", use_container_width=True):
             st.rerun()
+
 
 @st.dialog("⚠️ 클라우드 프로젝트 삭제 확인")
 def delete_cloud_confirmation(project_name):
@@ -98,7 +93,6 @@ def delete_cloud_confirmation(project_name):
             res = db.delete_project_from_cloud(project_name)
             if res is True:
                 st.success("클라우드 보관소에서 성공적으로 삭제되었습니다!")
-                # 삭제 후 사이드바 목록을 자동으로 즉시 갱신
                 st.session_state.cloud_project_list = db.get_cloud_projects_list()
                 st.rerun()
             else:
@@ -106,6 +100,7 @@ def delete_cloud_confirmation(project_name):
 
     if col2.button("취소", width="stretch"):
         st.rerun()
+
 
 if 'projects' not in st.session_state:
     st.session_state.projects = {
@@ -307,13 +302,11 @@ with tab1:
     st.info("💡 표 맨 왼쪽의 인덱스(번호) 부분을 클릭하여 체크한 후, 키보드의 'Delete' 키를 누르면 해당 항목이 삭제됩니다.")
 
     if not st.session_state.estimate_data.empty:
-        # 1. 숫자형 컬럼 강제 변환 (문자열이 섞여 있으면 숫자로 바꾸고, 에러나면 0으로 처리)
         for col in ["단가", "수량", "합계"]:
             if col in st.session_state.estimate_data.columns:
                 st.session_state.estimate_data[col] = pd.to_numeric(st.session_state.estimate_data[col],
                                                                     errors='coerce').fillna(0)
 
-        # 2. 날짜형 컬럼 강제 변환
         for col in ["시작일", "종료일"]:
             if col in st.session_state.estimate_data.columns:
                 st.session_state.estimate_data[col] = pd.to_datetime(st.session_state.estimate_data[col],
@@ -479,13 +472,14 @@ with tab2:
         st.warning("먼저 '설계 및 원가계산' 탭에서 공종을 추가해 주세요.")
 
 with tab3:
-    st.subheader("⚙️ 기초 데이터 동기화 (Excel 연동)")
-    st.info("💡 'data/master_data.xlsx' 파일에 데이터를 추가/수정한 후, 아래 버튼을 눌러 시스템에 완벽하게 반영하세요.")
+    st.subheader("⚙️ 기초 데이터 관리")
 
-    if st.button("🔄 마스터 데이터 DB 동기화 실행", type="primary", width="stretch"):
+    # 1. 데이터 동기화 섹션
+    st.markdown("### 1. 현재 데이터 동기화")
+    st.info("💡 엑셀 파일('data/master_data.xlsx')의 내용을 서버 DB와 최신 상태로 동기화합니다.")
+    if st.button("🔄 마스터 데이터 DB 동기화 실행", type="primary", use_container_width=True):
         excel_path = os.path.join("data", "master_data.xlsx")
         result = db.sync_master_data_from_excel(excel_path)
-
         if result["status"] == "success":
             st.success(result["message"])
         else:
@@ -493,14 +487,69 @@ with tab3:
 
     st.divider()
 
-    st.subheader("🔍 현재 시스템에 반영된 기준 데이터 확인")
+    # 2. 데이터 확인 및 개별 관리 (추가/삭제)
+    st.markdown("### 2. 동기화 데이터 확인 및 개별 관리")
 
     col_f1, col_f2 = st.columns([1, 3])
     with col_f1:
-        cat_filter = st.selectbox("대분류 필터", ["전체", "인건비", "자재비", "장비비"])
+        cat_filter = st.selectbox("대분류 필터", ["전체", "인건비", "자재비", "장비비", "세트"])
     with col_f2:
-        search_kw = st.text_input("항목명 또는 중분류 키워드 검색 (예: 보통인부, 레미콘)")
+        search_kw = st.text_input("항목명 또는 중분류 키워드 검색")
 
     df_master = db.get_filtered_master_items(category_large=cat_filter, search_keyword=search_kw)
-
     st.dataframe(df_master, width="stretch", hide_index=True)
+
+    # 개별 추가/삭제 UI
+    col_add, col_del = st.columns(2)
+    with col_add:
+        with st.expander("➕ 개별 항목 추가", expanded=False):
+            with st.form("add_form", clear_on_submit=True):
+                a_cat = st.selectbox("대분류", ["자재비", "인건비", "장비비", "세트"])
+                a_mid = st.text_input("중분류")
+                a_name = st.text_input("품목명")
+                a_spec = st.text_input("규격")
+                a_unit = st.text_input("단위")
+                a_price = st.number_input("단가", min_value=0)
+                a_src = st.text_input("출처")
+                if st.form_submit_button("항목 추가"):
+                    res = db.add_single_master_item(a_cat, a_mid, a_name, a_spec, a_unit, a_price, a_src)
+                    if res["status"] == "success":
+                        st.success("추가 완료!"); st.rerun()
+                    else:
+                        st.error(res["message"])
+
+    with col_del:
+        with st.expander("🗑️ 개별 항목 삭제", expanded=False):
+            del_target = st.selectbox("삭제할 항목 선택",
+                                      df_master['item_name'].tolist() if not df_master.empty else ["데이터 없음"])
+            if st.button("선택 항목 삭제", type="primary"):
+                res = db.delete_master_item(del_target)
+                if res["status"] == "success":
+                    st.success(res["message"]); st.rerun()
+                else:
+                    st.error(res["message"])
+
+    st.divider()
+
+    # 3. 대량 업로드
+    st.markdown("### 3. 데이터 대량 업로드")
+    st.markdown("엑셀 파일을 통해 한 번에 많은 데이터를 업데이트합니다.")
+
+    # 엑셀 양식 다운로드 버튼
+    template_df = pd.DataFrame(
+        columns=["category_large", "category_mid", "item_name", "spec", "unit", "unit_price", "source"])
+    output = io.BytesIO()
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        template_df.to_excel(writer, index=False)
+
+    st.download_button("⬇️ 기본 양식 다운로드 (Excel)", data=output.getvalue(), file_name="master_template.xlsx",
+                       mime="application/vnd.ms-excel")
+
+    uploaded_file = st.file_uploader("작성된 엑셀 파일 업로드", type=["xlsx"])
+    if uploaded_file and st.button("🚀 일괄 업로드 실행"):
+        up_df = pd.read_excel(uploaded_file)
+        res = db.upload_dataframe_to_master(up_df)
+        if res["status"] == "success":
+            st.success(res["message"]); st.rerun()
+        else:
+            st.error(res["message"])

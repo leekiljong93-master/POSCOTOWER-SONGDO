@@ -125,3 +125,42 @@ def delete_project_from_cloud(project_name):
             return "클라우드에서 해당 프로젝트를 찾을 수 없습니다."
     except Exception as e:
         return str(e)
+
+def add_single_master_item(category_large, category_mid, item_name, spec, unit, unit_price, source):
+    try:
+        doc = get_sheet()
+        # 실제 마스터 품목들이 적혀있는 워크시트 이름으로 지정하세요 (예: "기초DB")
+        ws = doc.worksheet("기초DB")
+        # 한 줄 추가 (대분류, 중분류, 품명, 규격, 단위, 단가, 출처)
+        ws.append_row([category_large, category_mid, item_name, spec, unit, int(unit_price), source])
+        return {"status": "success", "message": "성공"}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+
+def delete_master_item(item_name):
+    try:
+        doc = get_sheet()
+        ws = doc.worksheet("기초DB")  # 실제 시트 이름에 맞게 수정하세요
+
+        # 품명(item_name)이 있는 열을 찾아 삭제 (보통 3번째 열(C열)이 품명이라고 가정)
+        # 만약 품명이 다른 열에 있다면 cell.col == 3 부분을 수정해야 합니다.
+        cell = ws.find(item_name)
+        if cell:
+            ws.delete_rows(cell.row)
+            return {"status": "success", "message": f"'{item_name}' 항목이 구글 시트에서 성공적으로 삭제되었습니다."}
+        else:
+            return {"status": "error", "message": "해당 품목을 찾을 수 없습니다."}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+def upload_dataframe_to_master(df):
+    try:
+        doc = get_sheet()
+        ws = doc.worksheet("기초DB")
+        # 데이터프레임을 리스트 형태로 변환하여 시트 맨 아래에 일괄 추가
+        data_to_append = df.values.tolist()
+        ws.append_rows(data_to_append)
+        return {"status": "success", "message": f"🎉 총 {len(df)}건의 데이터가 구글 시트에 성공적으로 일괄 업로드되었습니다!"}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
