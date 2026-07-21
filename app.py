@@ -177,7 +177,7 @@ if st.session_state.cloud_project_list:
             if st.sidebar.button("🗑️ 선택한 프로젝트 클라우드에서 삭제", width="stretch"):
                 delete_cloud_confirmation(selected_project_name)
 else:
-    st.sidebar.info("👆 위 '목록 갱신/조회' 버튼을 눌러 프로젝트 목록을 확인하세요.")
+    st.sidebar.info("👆 '목록 갱신/조회' 버튼을 눌러 프로젝트 목록을 확인하세요.")
 
 if st.sidebar.button("💾 현재 프로젝트 클라우드에 저장", width="stretch"):
     with st.spinner("구글 시트에 안전하게 기록 중입니다..."):
