@@ -474,7 +474,6 @@ with tab2:
     with tab3:
         st.subheader("⚙️ 기초 데이터 관리")
 
-        # 1. 동기화 데이터 확인 및 인라인 편집 (기존 1, 2번 통합)
         st.markdown("### 1. 데이터 확인 및 개별 관리 (인라인 편집)")
         st.info("💡 표 안에서 직접 항목을 더블클릭해 수정하거나, 맨 아래 빈칸을 눌러 새 항목을 추가하세요. 맨 왼쪽 번호를 체크하고 Delete 키를 누르면 삭제됩니다.")
 
@@ -486,7 +485,6 @@ with tab2:
 
         df_master = db.get_filtered_master_items(category_large=cat_filter, search_keyword=search_kw)
 
-        # 엑셀처럼 표 안에서 직접 편집/추가/삭제할 수 있는 동적 에디터 적용
         edited_master = st.data_editor(
             df_master,
             num_rows="dynamic",
@@ -495,27 +493,22 @@ with tab2:
             key="master_data_editor"
         )
 
-        # 기존 1번과 2번의 저장 버튼을 하나로 통합하고, '번호 자동 정렬' 로직을 여기에 이식
         if st.button("💾 표에서 수정한 내용을 DB에 일괄 저장", type="primary", use_container_width=True, key="save_master_db_btn"):
             if cat_filter != "전체" or search_kw != "":
                 st.warning("⚠️ 필터링이 켜져 있습니다! 데이터 유실 방지를 위해 대분류를 '전체'로, 검색어를 비운 상태에서 편집 및 저장해 주세요.")
             else:
                 with st.spinner("번호를 정렬하고 DB에 변경사항을 덮어쓰는 중..."):
                     try:
-                        # 인덱스 및 빈 행 정리 후 순번 자동 재부여 (기존 1번 핵심 로직)
                         final_df = edited_master.copy()
 
-                        # 빈 행(항목명이 없는 행) 제거
                         final_df = final_df.dropna(subset=["item_name"])
 
-                        # 순번 자동 매김
                         final_df.reset_index(drop=True, inplace=True)
                         if "번호" in final_df.columns:
                             final_df["번호"] = final_df.index + 1
                         elif "id" in final_df.columns:
                             final_df["id"] = final_df.index + 1
 
-                        # DB에 일괄 반영
                         res = db.upload_dataframe_to_master(final_df)
 
                         if res["status"] == "success":
@@ -529,11 +522,9 @@ with tab2:
 
         st.divider()
 
-        # 2. 대량 업로드 (기존 3번)
         st.markdown("### 2. 데이터 대량 업로드 (Excel)")
         st.markdown("엑셀 파일을 통해 한 번에 많은 데이터를 업데이트합니다.")
 
-        # 엑셀 양식 다운로드 버튼
         template_df = pd.DataFrame(
             columns=["category_large", "category_mid", "item_name", "spec", "unit", "unit_price", "source"])
         output = io.BytesIO()
