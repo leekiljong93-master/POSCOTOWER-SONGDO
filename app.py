@@ -471,99 +471,84 @@ with tab2:
     else:
         st.warning("먼저 '설계 및 원가계산' 탭에서 공종을 추가해 주세요.")
 
-with tab3:
-    st.subheader("⚙️ 기초 데이터 관리")
+    with tab3:
+        st.subheader("⚙️ 기초 데이터 관리")
 
-    # 1. 데이터 동기화 섹션
-    st.markdown("### 1. 데이터 동기화")
-    st.info("💡 엑셀 파일('data/master_data.xlsx')의 내용을 서버 DB와 최신 상태로 동기화합니다.")
-    if st.button("💾 표에서 수정한 내용을 DB에 일괄 저장", type="primary", use_container_width=True):
-        if cat_filter != "전체" or search_kw != "":
-            st.warning("⚠️ 필터링이나 검색이 켜져 있습니다! 전체 데이터의 번호 정렬 및 유실 방지를 위해 대분류 필터를 '전체'로 맞추고 검색창을 비운 상태에서 저장해 주세요.")
-        else:
-            with st.spinner("번호를 정렬하고 DB에 변경사항을 덮어쓰는 중..."):
-                try:
-                    # [💡 핵심 보완] 인덱스 및 빈 행 정리 후 1번부터 정수형으로 순번 자동 재부여
-                    final_df = edited_master.copy()
+        # 1. 동기화 데이터 확인 및 인라인 편집 (기존 1, 2번 통합)
+        st.markdown("### 1. 데이터 확인 및 개별 관리 (인라인 편집)")
+        st.info("💡 표 안에서 직접 항목을 더블클릭해 수정하거나, 맨 아래 빈칸을 눌러 새 항목을 추가하세요. 맨 왼쪽 번호를 체크하고 Delete 키를 누르면 삭제됩니다.")
 
-                    # 혹시 추가 과정에서 생긴 완전히 비어있는 행(None 또는 NaN)이 있다면 제거
-                    final_df = final_df.dropna(subset=["item_name"])
+        col_f1, col_f2 = st.columns([1, 3])
+        with col_f1:
+            cat_filter = st.selectbox("대분류 필터", ["전체", "인건비", "자재비", "장비비", "세트"])
+        with col_f2:
+            search_kw = st.text_input("항목명 또는 중분류 키워드 검색")
 
-                    # 1부터 시작하는 순차적인 번호 자동 매김
-                    final_df.reset_index(drop=True, inplace=True)
-                    if "번호" in final_df.columns:
-                        final_df["번호"] = final_df.index + 1
-                    elif "id" in final_df.columns:
-                        final_df["id"] = final_df.index + 1
+        df_master = db.get_filtered_master_items(category_large=cat_filter, search_keyword=search_kw)
 
-                    # 수정 및 순번이 정렬된 최신 데이터프레임을 DB(구글 시트)에 일괄 반영
-                    res = db.upload_dataframe_to_master(final_df)
+        # 엑셀처럼 표 안에서 직접 편집/추가/삭제할 수 있는 동적 에디터 적용
+        edited_master = st.data_editor(
+            df_master,
+            num_rows="dynamic",
+            width="stretch",
+            hide_index=False,
+            key="master_data_editor"
+        )
 
-                    if res["status"] == "success":
-                        st.success("✅ 순번이 자동으로 정렬되어 DB에 성공적으로 반영되었습니다!")
-                        st.rerun()
-                    else:
-                        st.error(res["message"])
-                except Exception as e:
-                    st.error(f"데이터 전처리 및 저장 중 오류 발생: {e}")
+        # 기존 1번과 2번의 저장 버튼을 하나로 통합하고, '번호 자동 정렬' 로직을 여기에 이식
+        if st.button("💾 표에서 수정한 내용을 DB에 일괄 저장", type="primary", use_container_width=True, key="save_master_db_btn"):
+            if cat_filter != "전체" or search_kw != "":
+                st.warning("⚠️ 필터링이 켜져 있습니다! 데이터 유실 방지를 위해 대분류를 '전체'로, 검색어를 비운 상태에서 편집 및 저장해 주세요.")
+            else:
+                with st.spinner("번호를 정렬하고 DB에 변경사항을 덮어쓰는 중..."):
+                    try:
+                        # 인덱스 및 빈 행 정리 후 순번 자동 재부여 (기존 1번 핵심 로직)
+                        final_df = edited_master.copy()
 
-    st.divider()
+                        # 빈 행(항목명이 없는 행) 제거
+                        final_df = final_df.dropna(subset=["item_name"])
 
-    # 2. 동기화 데이터 확인 및 인라인 편집
-    st.markdown("### 2. 데이터 확인 및 추가/삭제")
-    st.info("💡 표 안에서 직접 항목을 더블클릭해 수정하거나, 표 맨 아래 빈칸을 눌러 새 항목을 추가하세요. 맨 왼쪽 번호를 체크하고 Delete 키를 누르면 삭제됩니다.")
+                        # 순번 자동 매김
+                        final_df.reset_index(drop=True, inplace=True)
+                        if "번호" in final_df.columns:
+                            final_df["번호"] = final_df.index + 1
+                        elif "id" in final_df.columns:
+                            final_df["id"] = final_df.index + 1
 
-    col_f1, col_f2 = st.columns([1, 3])
-    with col_f1:
-        cat_filter = st.selectbox("대분류 필터", ["전체", "인건비", "자재비", "장비비", "세트"])
-    with col_f2:
-        search_kw = st.text_input("항목명 또는 중분류 키워드 검색")
+                        # DB에 일괄 반영
+                        res = db.upload_dataframe_to_master(final_df)
 
-    df_master = db.get_filtered_master_items(category_large=cat_filter, search_keyword=search_kw)
+                        if res["status"] == "success":
+                            st.success("✅ 순번 정렬 및 DB 반영이 성공적으로 완료되었습니다!")
+                            st.rerun()
+                        else:
+                            st.error(res["message"])
+                    except Exception as e:
+                        st.error(f"데이터 전처리 및 저장 중 오류 발생: {e}")
 
-    # 엑셀처럼 표 안에서 직접 편집/추가/삭제할 수 있는 동적 에디터 적용
-    edited_master = st.data_editor(
-        df_master,
-        num_rows="dynamic",
-        width="stretch",
-        hide_index=False,
-        key="master_data_editor"
-    )
+        st.divider()
 
-    if st.button("💾 표에서 수정한 내용을 DB에 일괄 저장", type="primary", use_container_width=True, key="save_master_db_btn"):
-        if cat_filter != "전체" or search_kw != "":
-            st.warning("⚠️ 필터링이 켜져 있습니다! 데이터 유실 방지를 위해 대분류를 '전체'로, 검색어를 비운 상태에서 편집 및 저장해 주세요.")
-        else:
-            with st.spinner("DB에 변경사항을 덮어쓰는 중..."):
-                # 변경된 전체 데이터프레임을 DB에 일괄 반영
-                res = db.upload_dataframe_to_master(edited_master)
+        # 2. 대량 업로드 (기존 3번)
+        st.markdown("### 2. 데이터 대량 업로드 (Excel)")
+        st.markdown("엑셀 파일을 통해 한 번에 많은 데이터를 업데이트합니다.")
+
+        # 엑셀 양식 다운로드 버튼
+        template_df = pd.DataFrame(
+            columns=["category_large", "category_mid", "item_name", "spec", "unit", "unit_price", "source"])
+        output = io.BytesIO()
+        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+            template_df.to_excel(writer, index=False)
+
+        st.download_button("⬇️ 기본 양식 다운로드 (Excel)", data=output.getvalue(), file_name="master_template.xlsx",
+                           mime="application/vnd.ms-excel")
+
+        uploaded_file = st.file_uploader("작성된 엑셀 파일 업로드", type=["xlsx"])
+        if uploaded_file and st.button("🚀 일괄 업로드 실행"):
+            with st.spinner("엑셀 데이터를 DB에 업로드 중..."):
+                up_df = pd.read_excel(uploaded_file)
+                res = db.upload_dataframe_to_master(up_df)
                 if res["status"] == "success":
-                    st.success("✅ DB에 성공적으로 반영되었습니다!")
+                    st.success(res["message"])
                     st.rerun()
                 else:
                     st.error(res["message"])
-
-    st.divider()
-
-    # 3. 대량 업로드
-    st.markdown("### 3. 데이터 대량 업로드")
-    st.markdown("엑셀 파일을 통해 한 번에 많은 데이터를 업데이트합니다.")
-
-    # 엑셀 양식 다운로드 버튼
-    template_df = pd.DataFrame(
-        columns=["category_large", "category_mid", "item_name", "spec", "unit", "unit_price", "source"])
-    output = io.BytesIO()
-    with pd.ExcelWriter(output, engine='openpyxl') as writer:
-        template_df.to_excel(writer, index=False)
-
-    st.download_button("⬇️ 기본 양식 다운로드 (Excel)", data=output.getvalue(), file_name="master_template.xlsx",
-                       mime="application/vnd.ms-excel")
-
-    uploaded_file = st.file_uploader("작성된 엑셀 파일 업로드", type=["xlsx"])
-    if uploaded_file and st.button("🚀 일괄 업로드 실행"):
-        up_df = pd.read_excel(uploaded_file)
-        res = db.upload_dataframe_to_master(up_df)
-        if res["status"] == "success":
-            st.success(res["message"]); st.rerun()
-        else:
-            st.error(res["message"])
