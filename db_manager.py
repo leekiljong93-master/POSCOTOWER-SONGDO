@@ -154,13 +154,36 @@ def delete_master_item(item_name):
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
+
 def upload_dataframe_to_master(df):
+    """
+    사용자가 st.data_editor(인라인 편집)나 엑셀 업로드로 수정한 데이터프레임을
+    구글 시트의 '기초DB' 탭에 깔끔하게 초기화 후 덮어쓰는 (Overwrite) 핵심 함수입니다.
+    """
     try:
-        doc = get_sheet()
+        doc = get_gsheet_client().open_by_url(st.secrets["SPREADSHEET_URL"])
         ws = doc.worksheet("기초DB")
-        # 데이터프레임을 리스트 형태로 변환하여 시트 맨 아래에 일괄 추가
-        data_to_append = df.values.tolist()
-        ws.append_rows(data_to_append)
-        return {"status": "success", "message": f"🎉 총 {len(df)}건의 데이터가 구글 시트에 성공적으로 일괄 업로드되었습니다!"}
+
+        # 1. 안전하게 시트의 기존 데이터 모두 비우기 (헤더까지 초기화)
+        ws.clear()
+
+        # 2. 데이터프레임의 모든 컬럼명을 첫 번째 줄(헤더)로 지정
+        headers = df.columns.tolist()
+        ws.append_row(headers)
+
+        # 3. 파이썬의 NaN, NaT 같은 결측치 데이터를 구글 시트가 인식하도록 빈 문자열("")로 치환
+        cleaned_df = df.fillna("")
+
+        # 4. 판다스 데이터를 구글 시트 일괄 삽입용 중첩 리스트 형태로 변환
+        data_to_append = cleaned_df.values.tolist()
+
+        # 5. 데이터가 존재할 때만 일괄 업로드 실행 (API 호출 최소화)
+        if data_to_append:
+            ws.append_rows(data_to_append)
+
+        return {
+            "status": "success",
+            "message": f"🎉 총 {len(df)}건의 마스터 데이터가 순번 정렬 및 초기화 후 클라우드 DB에 완벽 동기화되었습니다!"
+        }
     except Exception as e:
-        return {"status": "error", "message": str(e)}
+        return {"status": "error", "message": f"클라우드 DB 덮어쓰기 실패: {str(e)}"}

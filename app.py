@@ -477,13 +477,35 @@ with tab3:
     # 1. 데이터 동기화 섹션
     st.markdown("### 1. 데이터 동기화")
     st.info("💡 엑셀 파일('data/master_data.xlsx')의 내용을 서버 DB와 최신 상태로 동기화합니다.")
-    if st.button("🔄 마스터 데이터 DB 동기화 실행", type="primary", use_container_width=True):
-        excel_path = os.path.join("data", "master_data.xlsx")
-        result = db.sync_master_data_from_excel(excel_path)
-        if result["status"] == "success":
-            st.success(result["message"])
+    if st.button("💾 표에서 수정한 내용을 DB에 일괄 저장", type="primary", use_container_width=True):
+        if cat_filter != "전체" or search_kw != "":
+            st.warning("⚠️ 필터링이나 검색이 켜져 있습니다! 전체 데이터의 번호 정렬 및 유실 방지를 위해 대분류 필터를 '전체'로 맞추고 검색창을 비운 상태에서 저장해 주세요.")
         else:
-            st.error(result["message"])
+            with st.spinner("번호를 정렬하고 DB에 변경사항을 덮어쓰는 중..."):
+                try:
+                    # [💡 핵심 보완] 인덱스 및 빈 행 정리 후 1번부터 정수형으로 순번 자동 재부여
+                    final_df = edited_master.copy()
+
+                    # 혹시 추가 과정에서 생긴 완전히 비어있는 행(None 또는 NaN)이 있다면 제거
+                    final_df = final_df.dropna(subset=["item_name"])
+
+                    # 1부터 시작하는 순차적인 번호 자동 매김
+                    final_df.reset_index(drop=True, inplace=True)
+                    if "번호" in final_df.columns:
+                        final_df["번호"] = final_df.index + 1
+                    elif "id" in final_df.columns:
+                        final_df["id"] = final_df.index + 1
+
+                    # 수정 및 순번이 정렬된 최신 데이터프레임을 DB(구글 시트)에 일괄 반영
+                    res = db.upload_dataframe_to_master(final_df)
+
+                    if res["status"] == "success":
+                        st.success("✅ 순번이 자동으로 정렬되어 DB에 성공적으로 반영되었습니다!")
+                        st.rerun()
+                    else:
+                        st.error(res["message"])
+                except Exception as e:
+                    st.error(f"데이터 전처리 및 저장 중 오류 발생: {e}")
 
     st.divider()
 
@@ -508,7 +530,7 @@ with tab3:
         key="master_data_editor"
     )
 
-    if st.button("💾 표에서 수정한 내용을 DB에 일괄 저장", type="primary", use_container_width=True):
+    if st.button("💾 표에서 수정한 내용을 DB에 일괄 저장", type="primary", use_container_width=True, key="save_master_db_btn"):
         if cat_filter != "전체" or search_kw != "":
             st.warning("⚠️ 필터링이 켜져 있습니다! 데이터 유실 방지를 위해 대분류를 '전체'로, 검색어를 비운 상태에서 편집 및 저장해 주세요.")
         else:
