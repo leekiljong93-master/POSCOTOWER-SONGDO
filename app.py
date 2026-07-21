@@ -133,8 +133,9 @@ if selected_project != st.session_state.current_project:
     st.rerun()
 
 if len(st.session_state.projects) > 1:
-    if st.sidebar.button("🗑️ 현재 프로젝트 삭제", width="stretch"):
-        delete_confirmation(st.session_state.current_project)
+
+if st.sidebar.button("🗑️ 현재 프로젝트 삭제", width="stretch"):
+    delete_confirmation(st.session_state.current_project)
 else:
     st.sidebar.button("🗑️ 현재 프로젝트 삭제", disabled=True, width="stretch", help="프로젝트가 1개일 때는 삭제할 수 없습니다.")
 
