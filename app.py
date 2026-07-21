@@ -228,16 +228,16 @@ with tab_dash:
             st.plotly_chart(fig_bar, width="stretch")
 
 with tab1:
-    st.subheader("🔍 1. 자재 / 인건비 / 장비 / 세트 입력")
+    st.subheader("🔍 1. 자재비 / 인건비 / 장비비 / 세트 입력")
     col1, col2, col3, col4 = st.columns(4)
 
     with col1:
-        st.markdown("##### 🧱 자재")
+        st.markdown("##### 🧱 자재비")
         df_mat = db.get_filtered_master_items(category_large="자재비")
         mat_names = df_mat['item_name'].tolist() if not df_mat.empty else ["데이터 없음"]
         m_sel = st.selectbox("품목 선택", mat_names, key="mat_select")
-        m_qty = st.number_input("수량", min_value=0.0, key="mat_qty")
-        if st.button("자재 추가", key="mat_add"):
+        m_qty = st.number_input("수량", min_value=0.0, step=1.0, format="%.2f")
+        if st.button("자재비 추가", key="mat_add"):
             u_price = db.get_unit_price(m_sel)
             new_row = pd.DataFrame({
                 "공종명": [m_sel], "구분": ["자재"], "단위": ["식"],
@@ -252,7 +252,7 @@ with tab1:
         df_lab = db.get_filtered_master_items(category_large="인건비")
         lab_names = df_lab['item_name'].tolist() if not df_lab.empty else ["데이터 없음"]
         l_sel = st.selectbox("직종 선택", lab_names, key="lab_select")
-        l_qty = st.number_input("인원", min_value=0.0, key="lab_qty")
+        l_qty = st.number_input("인원", min_value=0.0, step=1.0, format="%.2f")
         if st.button("인건비 추가", key="lab_add"):
             u_price = db.get_unit_price(l_sel)
             new_row = pd.DataFrame({
@@ -264,12 +264,12 @@ with tab1:
             st.rerun()
 
     with col3:
-        st.markdown("##### 🏗️ 장비")
+        st.markdown("##### 🏗️ 장비비")
         df_eq = db.get_filtered_master_items(category_large="장비비")
         eq_names = df_eq['item_name'].tolist() if not df_eq.empty else ["데이터 없음"]
         e_sel = st.selectbox("장비 선택", eq_names, key="eq_select")
-        e_qty = st.number_input("시간", min_value=0.0, key="eq_qty")
-        if st.button("장비 추가", key="eq_add"):
+        e_qty = st.number_input("시간", min_value=0.0, step=1.0, format="%.2f")
+        if st.button("장비비 추가", key="eq_add"):
             u_price = db.get_unit_price(e_sel)
             new_row = pd.DataFrame({
                 "공종명": [e_sel], "구분": ["장비"], "단위": ["시간"],
@@ -475,7 +475,7 @@ with tab3:
     st.subheader("⚙️ 기초 데이터 관리")
 
     # 1. 데이터 동기화 섹션
-    st.markdown("### 1. 현재 데이터 동기화")
+    st.markdown("### 1. 데이터 동기화")
     st.info("💡 엑셀 파일('data/master_data.xlsx')의 내용을 서버 DB와 최신 상태로 동기화합니다.")
     if st.button("🔄 마스터 데이터 DB 동기화 실행", type="primary", use_container_width=True):
         excel_path = os.path.join("data", "master_data.xlsx")
@@ -487,8 +487,9 @@ with tab3:
 
     st.divider()
 
-    # 2. 데이터 확인 및 개별 관리 (추가/삭제)
-    st.markdown("### 2. 동기화 데이터 확인 및 개별 관리")
+    # 2. 동기화 데이터 확인 및 인라인 편집
+    st.markdown("### 2. 데이터 확인 및 추가/삭제")
+    st.info("💡 표 안에서 직접 항목을 더블클릭해 수정하거나, 표 맨 아래 빈칸을 눌러 새 항목을 추가하세요. 맨 왼쪽 번호를 체크하고 Delete 키를 누르면 삭제됩니다.")
 
     col_f1, col_f2 = st.columns([1, 3])
     with col_f1:
@@ -497,35 +498,26 @@ with tab3:
         search_kw = st.text_input("항목명 또는 중분류 키워드 검색")
 
     df_master = db.get_filtered_master_items(category_large=cat_filter, search_keyword=search_kw)
-    st.dataframe(df_master, width="stretch", hide_index=True)
 
-    # 개별 추가/삭제 UI
-    col_add, col_del = st.columns(2)
-    with col_add:
-        with st.expander("➕ 개별 항목 추가", expanded=False):
-            with st.form("add_form", clear_on_submit=True):
-                a_cat = st.selectbox("대분류", ["자재비", "인건비", "장비비", "세트"])
-                a_mid = st.text_input("중분류")
-                a_name = st.text_input("품목명")
-                a_spec = st.text_input("규격")
-                a_unit = st.text_input("단위")
-                a_price = st.number_input("단가", min_value=0)
-                a_src = st.text_input("출처")
-                if st.form_submit_button("항목 추가"):
-                    res = db.add_single_master_item(a_cat, a_mid, a_name, a_spec, a_unit, a_price, a_src)
-                    if res["status"] == "success":
-                        st.success("추가 완료!"); st.rerun()
-                    else:
-                        st.error(res["message"])
+    # 엑셀처럼 표 안에서 직접 편집/추가/삭제할 수 있는 동적 에디터 적용
+    edited_master = st.data_editor(
+        df_master,
+        num_rows="dynamic",
+        width="stretch",
+        hide_index=False,
+        key="master_data_editor"
+    )
 
-    with col_del:
-        with st.expander("🗑️ 개별 항목 삭제", expanded=False):
-            del_target = st.selectbox("삭제할 항목 선택",
-                                      df_master['item_name'].tolist() if not df_master.empty else ["데이터 없음"])
-            if st.button("선택 항목 삭제", type="primary"):
-                res = db.delete_master_item(del_target)
+    if st.button("💾 표에서 수정한 내용을 DB에 일괄 저장", type="primary", use_container_width=True):
+        if cat_filter != "전체" or search_kw != "":
+            st.warning("⚠️ 필터링이 켜져 있습니다! 데이터 유실 방지를 위해 대분류를 '전체'로, 검색어를 비운 상태에서 편집 및 저장해 주세요.")
+        else:
+            with st.spinner("DB에 변경사항을 덮어쓰는 중..."):
+                # 변경된 전체 데이터프레임을 DB에 일괄 반영
+                res = db.upload_dataframe_to_master(edited_master)
                 if res["status"] == "success":
-                    st.success(res["message"]); st.rerun()
+                    st.success("✅ DB에 성공적으로 반영되었습니다!")
+                    st.rerun()
                 else:
                     st.error(res["message"])
 
