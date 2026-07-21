@@ -407,8 +407,8 @@ with tab1:
     general_admin = int(net_construction_cost * (rate_general_admin / 100))
     profit = int((total_labor + total_expense + general_admin) * (rate_profit / 100))
 
-    supply_value = net_construction_cost + general_admin + profit
-    vat = int(supply_value * (rate_tax / 100))
+    summary_value = net_construction_cost + general_admin + profit
+    vat = int(summary_value * (rate_tax / 100))
     total_contract_price = supply_value + vat
 
     summary_data = [
@@ -431,7 +431,7 @@ with tab1:
         {"비목": "▶ 순공사원가 (1+2+3)", "금액(원)": f"{net_construction_cost:,}", "산출근거": "재료비 + 노무비 + 경비"},
         {"비목": "4. 일반관리비", "금액(원)": f"{general_admin:,}", "산출근거": f"순공사원가 × {rate_general_admin}%"},
         {"비목": "5. 이윤", "금액(원)": f"{profit:,}", "산출근거": f"(노무비+경비+일반관리비) × {rate_profit}%"},
-        {"비목": "▶ 공급가액", "금액(원)": f"{supply_value:,}", "산출근거": "순공사원가 + 일반관리비 + 이윤"},
+        {"비목": "▶ 공급가액", "금액(원)": f"{summary_value:,}", "산출근거": "순공사원가 + 일반관리비 + 이윤"},
         {"비목": "6. 부가가치세", "금액(원)": f"{vat:,}", "산출근거": f"공급가액 × {rate_tax}%"},
         {"비목": "■ 총 공사예정금액(도급액)", "금액(원)": f"{total_contract_price:,}", "산출근거": "공급가액 + 부가가치세"},
     ]
@@ -471,76 +471,92 @@ with tab2:
     else:
         st.warning("먼저 '설계 및 원가계산' 탭에서 공종을 추가해 주세요.")
 
-    with tab3:
-        st.subheader("⚙️ 기초 데이터 관리")
+# 탭 3의 들여쓰기를 정렬하여 탭 2 밖으로 완전히 분리했습니다.
+with tab3:
+    st.subheader("⚙️ 기초 데이터 관리")
 
-        st.markdown("### 1. 데이터 확인 및 개별 관리 (인라인 편집)")
-        st.info("💡 표 안에서 직접 항목을 더블클릭해 수정하거나, 맨 아래 빈칸을 눌러 새 항목을 추가하세요. 맨 왼쪽 번호를 체크하고 Delete 키를 누르면 삭제됩니다.")
+    st.markdown("### 1. 데이터 확인 및 개별 관리 (인라인 편집)")
+    st.info("💡 표 안에서 직접 항목을 더블클릭해 수정하거나, 맨 아래 빈칸을 눌러 새 항목을 추가하세요. 맨 왼쪽 번호를 체크하고 Delete 키를 누르면 삭제됩니다.")
 
-        col_f1, col_f2 = st.columns([1, 3])
-        with col_f1:
-            cat_filter = st.selectbox("대분류 필터", ["전체", "인건비", "자재비", "장비비", "세트"])
-        with col_f2:
-            search_kw = st.text_input("항목명 또는 중분류 키워드 검색")
+    col_f1, col_f2 = st.columns([1, 3])
+    with col_f1:
+        cat_filter = st.selectbox("대분류 필터", ["전체", "인건비", "자재비", "장비비", "세트"])
+    with col_f2:
+        search_kw = st.text_input("항목명 또는 중분류 키워드 검색")
 
-        df_master = db.get_filtered_master_items(category_large=cat_filter, search_keyword=search_kw)
+    df_master = db.get_filtered_master_items(category_large=cat_filter, search_keyword=search_kw)
 
-        edited_master = st.data_editor(
-            df_master,
-            num_rows="dynamic",
-            width="stretch",
-            hide_index=False,
-            key="master_data_editor"
-        )
+    # 대분류 컬럼을 셀렉트박스로 안전하게 강제 고정
+    edited_master = st.data_editor(
+        df_master,
+        num_rows="dynamic",
+        width="stretch",
+        hide_index=False,
+        key="master_data_editor",
+        column_config={
+            "category_large": st.column_config.SelectboxColumn(
+                "대분류",
+                help="원가 계산의 기준이 되므로 정확하게 선택하세요.",
+                options=["인건비", "자재비", "장비비", "세트"],
+                required=True
+            ),
+            "category_mid": st.column_config.TextColumn("중분류"),
+            "item_name": st.column_config.TextColumn("항목명", required=True),
+            "spec": st.column_config.TextColumn("규격"),
+            "unit": st.column_config.TextColumn("단위"),
+            "unit_price": st.column_config.NumberColumn("기준단가", format="%d"),
+            "source": st.column_config.TextColumn("출처")
+        }
+    )
 
-        if st.button("💾 표에서 수정한 내용을 DB에 일괄 저장", type="primary", use_container_width=True, key="save_master_db_btn"):
-            if cat_filter != "전체" or search_kw != "":
-                st.warning("⚠️ 필터링이 켜져 있습니다! 데이터 유실 방지를 위해 대분류를 '전체'로, 검색어를 비운 상태에서 편집 및 저장해 주세요.")
+    if st.button("💾 표에서 수정한 내용을 DB에 일괄 저장", type="primary", use_container_width=True, key="save_master_db_btn"):
+        if cat_filter != "전체" or search_kw != "":
+            st.warning("⚠️ 필터링이 켜져 있습니다! 데이터 유실 방지를 위해 대분류를 '전체'로, 검색어를 비운 상태에서 편집 및 저장해 주세요.")
+        else:
+            with st.spinner("번호를 정렬하고 DB에 변경사항을 덮어쓰는 중..."):
+                try:
+                    final_df = edited_master.copy()
+
+                    final_df = final_df.dropna(subset=["item_name"])
+
+                    final_df.reset_index(drop=True, inplace=True)
+                    if "번호" in final_df.columns:
+                        final_df["번호"] = final_df.index + 1
+                    elif "id" in final_df.columns:
+                        final_df["id"] = final_df.index + 1
+
+                    res = db.upload_dataframe_to_master(final_df)
+
+                    if res["status"] == "success":
+                        st.cache_data.clear()
+                        st.success("✅ 순번 정렬 및 DB 반영이 성공적으로 완료되었습니다!")
+                        st.rerun()
+                    else:
+                        st.error(res["message"])
+                except Exception as e:
+                    st.error(f"데이터 전처리 및 저장 중 오류 발생: {e}")
+
+    st.divider()
+
+    st.markdown("### 2. 데이터 대량 업로드 (Excel)")
+    st.markdown("엑셀 파일을 통해 한 번에 많은 데이터를 업데이트합니다.")
+
+    template_df = pd.DataFrame(
+        columns=["category_large", "category_mid", "item_name", "spec", "unit", "unit_price", "source"])
+    output = io.BytesIO()
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        template_df.to_excel(writer, index=False)
+
+    st.download_button("⬇️ 기본 양식 다운로드 (Excel)", data=output.getvalue(), file_name="master_template.xlsx",
+                       mime="application/vnd.ms-excel")
+
+    uploaded_file = st.file_uploader("작성된 엑셀 파일 업로드", type=["xlsx"])
+    if uploaded_file and st.button("🚀 일괄 업로드 실행"):
+        with st.spinner("엑셀 데이터를 DB에 업로드 중..."):
+            up_df = pd.read_excel(uploaded_file)
+            res = db.upload_dataframe_to_master(up_df)
+            if res["status"] == "success":
+                st.success(res["message"])
+                st.rerun()
             else:
-                with st.spinner("번호를 정렬하고 DB에 변경사항을 덮어쓰는 중..."):
-                    try:
-                        final_df = edited_master.copy()
-
-                        final_df = final_df.dropna(subset=["item_name"])
-
-                        final_df.reset_index(drop=True, inplace=True)
-                        if "번호" in final_df.columns:
-                            final_df["번호"] = final_df.index + 1
-                        elif "id" in final_df.columns:
-                            final_df["id"] = final_df.index + 1
-
-                        res = db.upload_dataframe_to_master(final_df)
-
-                        if res["status"] == "success":
-                            st.cache_data.clear()
-                            st.success("✅ 순번 정렬 및 DB 반영이 성공적으로 완료되었습니다!")
-                            st.rerun()
-                        else:
-                            st.error(res["message"])
-                    except Exception as e:
-                        st.error(f"데이터 전처리 및 저장 중 오류 발생: {e}")
-
-        st.divider()
-
-        st.markdown("### 2. 데이터 대량 업로드 (Excel)")
-        st.markdown("엑셀 파일을 통해 한 번에 많은 데이터를 업데이트합니다.")
-
-        template_df = pd.DataFrame(
-            columns=["category_large", "category_mid", "item_name", "spec", "unit", "unit_price", "source"])
-        output = io.BytesIO()
-        with pd.ExcelWriter(output, engine='openpyxl') as writer:
-            template_df.to_excel(writer, index=False)
-
-        st.download_button("⬇️ 기본 양식 다운로드 (Excel)", data=output.getvalue(), file_name="master_template.xlsx",
-                           mime="application/vnd.ms-excel")
-
-        uploaded_file = st.file_uploader("작성된 엑셀 파일 업로드", type=["xlsx"])
-        if uploaded_file and st.button("🚀 일괄 업로드 실행"):
-            with st.spinner("엑셀 데이터를 DB에 업로드 중..."):
-                up_df = pd.read_excel(uploaded_file)
-                res = db.upload_dataframe_to_master(up_df)
-                if res["status"] == "success":
-                    st.success(res["message"])
-                    st.rerun()
-                else:
-                    st.error(res["message"])
+                st.error(res["message"])
