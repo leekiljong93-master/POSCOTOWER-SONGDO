@@ -407,8 +407,8 @@ with tab1:
     general_admin = int(net_construction_cost * (rate_general_admin / 100))
     profit = int((total_labor + total_expense + general_admin) * (rate_profit / 100))
 
-    summary_value = net_construction_cost + general_admin + profit
-    vat = int(summary_value * (rate_tax / 100))
+    supply_value = net_construction_cost + general_admin + profit
+    vat = int(supply_value * (rate_tax / 100))
     total_contract_price = supply_value + vat
 
     summary_data = [
@@ -431,7 +431,7 @@ with tab1:
         {"비목": "▶ 순공사원가 (1+2+3)", "금액(원)": f"{net_construction_cost:,}", "산출근거": "재료비 + 노무비 + 경비"},
         {"비목": "4. 일반관리비", "금액(원)": f"{general_admin:,}", "산출근거": f"순공사원가 × {rate_general_admin}%"},
         {"비목": "5. 이윤", "금액(원)": f"{profit:,}", "산출근거": f"(노무비+경비+일반관리비) × {rate_profit}%"},
-        {"비목": "▶ 공급가액", "금액(원)": f"{summary_value:,}", "산출근거": "순공사원가 + 일반관리비 + 이윤"},
+        {"비목": "▶ 공급가액", "금액(원)": f"{supply_value:,}", "산출근거": "순공사원가 + 일반관리비 + 이윤"},
         {"비목": "6. 부가가치세", "금액(원)": f"{vat:,}", "산출근거": f"공급가액 × {rate_tax}%"},
         {"비목": "■ 총 공사예정금액(도급액)", "금액(원)": f"{total_contract_price:,}", "산출근거": "공급가액 + 부가가치세"},
     ]
@@ -471,7 +471,6 @@ with tab2:
     else:
         st.warning("먼저 '설계 및 원가계산' 탭에서 공종을 추가해 주세요.")
 
-# 탭 3의 들여쓰기를 정렬하여 탭 2 밖으로 완전히 분리했습니다.
 with tab3:
     st.subheader("⚙️ 기초 데이터 관리")
 
@@ -486,27 +485,12 @@ with tab3:
 
     df_master = db.get_filtered_master_items(category_large=cat_filter, search_keyword=search_kw)
 
-    # 대분류 컬럼을 셀렉트박스로 안전하게 강제 고정
     edited_master = st.data_editor(
         df_master,
         num_rows="dynamic",
         width="stretch",
         hide_index=False,
-        key="master_data_editor",
-        column_config={
-            "category_large": st.column_config.SelectboxColumn(
-                "대분류",
-                help="원가 계산의 기준이 되므로 정확하게 선택하세요.",
-                options=["인건비", "자재비", "장비비", "세트"],
-                required=True
-            ),
-            "category_mid": st.column_config.TextColumn("중분류"),
-            "item_name": st.column_config.TextColumn("항목명", required=True),
-            "spec": st.column_config.TextColumn("규격"),
-            "unit": st.column_config.TextColumn("단위"),
-            "unit_price": st.column_config.NumberColumn("기준단가", format="%d"),
-            "source": st.column_config.TextColumn("출처")
-        }
+        key="master_data_editor"
     )
 
     if st.button("💾 표에서 수정한 내용을 DB에 일괄 저장", type="primary", use_container_width=True, key="save_master_db_btn"):
