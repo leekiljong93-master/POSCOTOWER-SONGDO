@@ -6,15 +6,12 @@ import pandas as pd
 import os
 
 def get_gsheet_client():
-     1. 로컬 환경 확인: service_account.json 파일이 있으면 우선 사용
     if os.path.exists("service_account.json"):
         with open("service_account.json", "r", encoding="utf-8") as f:
             creds_json = json.load(f)
-     2. 클라우드 환경(Streamlit Cloud)이면 st.secrets 사용
     else:
         try:
             creds_info = st.secrets["GOOGLE_CREDENTIALS"]
-             AttrDict(스트림릿 객체)를 순수 딕셔너리로 변환
             creds_json = dict(creds_info)
         except Exception as e:
             st.error(f"인증 정보 로드 실패: {e}")
@@ -35,15 +32,12 @@ def get_sheet():
 def init_db():
     try:
         doc = get_sheet()
-         기초DB 탭 확인
         try: doc.worksheet("기초DB")
         except: doc.add_worksheet(title="기초DB", rows="1000", cols="10").append_row(["category_large", "category_mid", "item_name", "spec", "unit", "unit_price", "source"])
-         프로젝트저장소 탭 확인
         try: doc.worksheet("프로젝트저장소")
         except: doc.add_worksheet(title="프로젝트저장소", rows="1000", cols="10").append_row(["project_name", "date", "data_json"])
     except: pass
 
- 👇 구글 API 호출 제한(429 에러) 방지를 위해 5분(300초) 동안 데이터를 캐싱합니다.
 @st.cache_data(ttl=300)
 def get_filtered_master_items(category_large="전체", search_keyword=""):
     try:
@@ -72,7 +66,6 @@ def sync_master_data_from_excel(file_path):
 
         df = pd.read_excel(file_path).fillna("")
 
-         엑셀의 한글 제목을 DB가 인식하는 영문 컬럼명으로 강제 변환
         df.columns = ["category_large", "category_mid", "item_name", "spec", "unit", "unit_price", "source"]
 
         doc = get_sheet()
@@ -88,12 +81,10 @@ def get_cloud_projects_list():
     try:
         doc = get_sheet()
         ws = doc.worksheet("프로젝트저장소")
-         시트의 모든 데이터를 딕셔너리 형태로 가져옴
         records = ws.get_all_records()
 
         result = []
         for r in records:
-             app.py가 요구하는 'name'과 'date' 형식의 딕셔너리로 변환
             result.append({
                 "name": str(r.get("project_name", "이름없음")),
                 "date": str(r.get("date", ""))
@@ -108,14 +99,12 @@ def delete_project_from_cloud(project_name):
     try:
         doc = get_sheet()
         ws = doc.worksheet("프로젝트저장소")
-         첫 번째 열(프로젝트명)의 모든 값을 가져옴
         cells = ws.col_values(1)
 
         row_idx = -1
-         전체를 다 지우지 않고, 정확히 이름이 일치하는 '첫 번째' 항목만 찾아 인덱스 기록 후 종료(break)
         for idx, val in enumerate(cells):
             if str(val) == str(project_name):
-                row_idx = idx + 1   구글 시트는 인덱스가 1부터 시작합니다.
+                row_idx = idx + 1
                 break
 
         if row_idx != -1:
@@ -129,9 +118,7 @@ def delete_project_from_cloud(project_name):
 def add_single_master_item(category_large, category_mid, item_name, spec, unit, unit_price, source):
     try:
         doc = get_sheet()
-         실제 마스터 품목들이 적혀있는 워크시트 이름으로 지정하세요 (예: "기초DB")
         ws = doc.worksheet("기초DB")
-         한 줄 추가 (대분류, 중분류, 품명, 규격, 단위, 단가, 출처)
         ws.append_row([category_large, category_mid, item_name, spec, unit, int(unit_price), source])
         return {"status": "success", "message": "성공"}
     except Exception as e:
@@ -141,10 +128,7 @@ def add_single_master_item(category_large, category_mid, item_name, spec, unit, 
 def delete_master_item(item_name):
     try:
         doc = get_sheet()
-        ws = doc.worksheet("기초DB")   실제 시트 이름에 맞게 수정하세요
-
-         품명(item_name)이 있는 열을 찾아 삭제 (보통 3번째 열(C열)이 품명이라고 가정)
-         만약 품명이 다른 열에 있다면 cell.col == 3 부분을 수정해야 합니다.
+        ws = doc.worksheet("기초DB")
         cell = ws.find(item_name)
         if cell:
             ws.delete_rows(cell.row)
@@ -156,31 +140,16 @@ def delete_master_item(item_name):
 
 
 def upload_dataframe_to_master(df):
-    """
-    사용자가 st.data_editor(인라인 편집)나 엑셀 업로드로 수정한 데이터프레임을
-    구글 시트의 '기초DB' 탭에 깔끔하게 초기화 후 덮어쓰는 (Overwrite) 핵심 함수입니다.
-    """
     try:
         doc = get_gsheet_client().open_by_url(st.secrets["SPREADSHEET_URL"])
         ws = doc.worksheet("기초DB")
-
-         1. 안전하게 시트의 기존 데이터 모두 비우기 (헤더까지 초기화)
         ws.clear()
-
-         2. 데이터프레임의 모든 컬럼명을 첫 번째 줄(헤더)로 지정
         headers = df.columns.tolist()
         ws.append_row(headers)
-
-         3. 파이썬의 NaN, NaT 같은 결측치 데이터를 구글 시트가 인식하도록 빈 문자열("")로 치환
         cleaned_df = df.fillna("")
-
-         4. 판다스 데이터를 구글 시트 일괄 삽입용 중첩 리스트 형태로 변환
         data_to_append = cleaned_df.values.tolist()
-
-         5. 데이터가 존재할 때만 일괄 업로드 실행 (API 호출 최소화)
         if data_to_append:
             ws.append_rows(data_to_append)
-
         return {
             "status": "success",
             "message": f"🎉 총 {len(df)}건의 마스터 데이터가 순번 정렬 및 초기화 후 클라우드 DB에 완벽 동기화되었습니다!"
