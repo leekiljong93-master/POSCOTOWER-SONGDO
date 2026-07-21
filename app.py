@@ -519,6 +519,7 @@ with tab2:
                         res = db.upload_dataframe_to_master(final_df)
 
                         if res["status"] == "success":
+                            st.cache_data.clear()
                             st.success("✅ 순번 정렬 및 DB 반영이 성공적으로 완료되었습니다!")
                             st.rerun()
                         else:
