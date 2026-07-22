@@ -11,28 +11,8 @@ st.title("🏗️ 포타송 설계서 작성(by.PI_Lee)")
 db.init_db()
 
 
-def save_project_to_cloud(project_name, df):
-    try:
-        doc = db.get_sheet()
-        ws = doc.worksheet("프로젝트저장소")
-        data_json = df.to_json(orient='records', force_ascii=False)
-        records = ws.get_all_records()
-        row_idx = -1
-        for i, r in enumerate(records):
-            if str(r.get('project_name', '')) == str(project_name):
-                row_idx = i + 2
-                break
-        if row_idx != -1:
-            ws.update(f"A{row_idx}:C{row_idx}",
-                      [[project_name, datetime.now().strftime("%Y-%m-%d %H:%M:%S"), data_json]])
-        else:
-            ws.append_row([project_name, datetime.now().strftime("%Y-%m-%d %H:%M:%S"), data_json])
-        return True
-    except Exception as e:
-        return str(e)
-
-
 def load_project_from_cloud(project_name):
+    """읽기 전용 함수. 프로젝트저장소 시트에서 해당 프로젝트의 데이터를 가져온다."""
     try:
         doc = db.get_sheet()
         ws = doc.worksheet("프로젝트저장소")
@@ -40,7 +20,8 @@ def load_project_from_cloud(project_name):
         for row in rows[1:]:
             if row[0] == project_name:
                 data_json = row[2]
-                if not data_json: return None
+                if not data_json:
+                    return None
                 return pd.read_json(io.StringIO(data_json), orient='records')
         return None
     except Exception as e:
@@ -132,6 +113,7 @@ st.sidebar.subheader("☁️ 클라우드 DB 보관소")
 
 if st.sidebar.button("🔄 클라우드 목록 갱신/조회", width="stretch"):
     with st.spinner("구글 시트에서 프로젝트 목록을 불러오는 중..."):
+        db.get_cloud_projects_list.clear()
         st.session_state.cloud_project_list = db.get_cloud_projects_list()
 
 if st.session_state.cloud_project_list:
@@ -158,7 +140,7 @@ if st.session_state.cloud_project_list:
 if st.sidebar.button("💾 현재 프로젝트 클라우드에 저장", width="stretch"):
     with st.spinner("구글 시트에 기록 중입니다..."):
         st.session_state.projects[st.session_state.current_project] = st.session_state.estimate_data.copy()
-        res = save_project_to_cloud(st.session_state.current_project, st.session_state.estimate_data)
+        res = db.save_project_to_cloud(st.session_state.current_project, st.session_state.estimate_data)
         if res is True:
             st.sidebar.success("클라우드 저장이 완료되었습니다!")
         else:
@@ -269,9 +251,11 @@ with tab1:
             if col in st.session_state.estimate_data.columns:
                 st.session_state.estimate_data[col] = pd.to_datetime(st.session_state.estimate_data[col],
                                                                      errors='coerce')
+    display_df = st.session_state.estimate_data.copy()
+    display_df.index = range(1, len(display_df) + 1)  # 화면 표시용 index 1부터 시작
 
     edited_df = st.data_editor(
-        st.session_state.estimate_data,
+        display_df,
         num_rows="dynamic",
         column_config={
             "단위": st.column_config.SelectboxColumn("단위",
@@ -287,6 +271,7 @@ with tab1:
     )
 
     if not edited_df.empty:
+        edited_df = edited_df.reset_index(drop=True)  # 저장 전 다시 0-based로 정리
         edited_df["단가"] = pd.to_numeric(edited_df["단가"], errors="coerce").fillna(0)
         edited_df["수량"] = pd.to_numeric(edited_df["수량"], errors="coerce").fillna(0)
         edited_df["합계"] = (edited_df["단가"] * edited_df["수량"]).astype(int)
@@ -411,14 +396,18 @@ with tab3:
     st.markdown("### 1. 통합 데이터 확인 및 개별 관리 (인라인 편집)")
     st.info("💡 표 안에서 직접 항목을 수정/추가하세요. '구분'을 지정하면 저장 시 시스템이 알아서 각 구글 시트로 분리하여 저장합니다!")
 
-    col_clear, col_search = st.columns([1, 3])
+    col_search, col_count, col_blank = st.columns([1.2, 1, 2])
     with col_search:
-        search_kw = st.text_input("항목명 검색 키워드", key="master_search_input")
+        search_kw = st.text_input("항목명 검색 키워드", key="master_search_input",
+                                   placeholder="예: 철근, 레미콘, 굴착기")
 
-    # 4개 시트의 데이터를 하나로 뭉쳐서 가져옴
     df_master = db.get_all_master_items_combined(search_keyword=search_kw)
+    df_master.index = range(1, len(df_master) + 1)  # 화면 표시용 index 1부터 시작
 
-    # 통합 에디터 렌더링
+    with col_count:
+        st.write("")
+        st.caption(f"🔎 검색 결과: **{len(df_master):,}건**")
+
     edited_master = st.data_editor(
         df_master,
         num_rows="dynamic",
@@ -446,11 +435,10 @@ with tab3:
                     final_df = final_df[final_df["구분"].str.strip() != ""]
                     final_df.reset_index(drop=True, inplace=True)
 
-                    # 분리 업로드 실행
+                    # 분리 업로드 실행 (내부에서 관련 캐시만 clear됨)
                     res = db.upload_combined_dataframe_to_master(final_df)
 
                     if res["status"] == "success":
-                        st.cache_data.clear()
                         st.success(res["message"])
                         st.rerun()
                     else:
@@ -480,7 +468,6 @@ with tab3:
             else:
                 res = db.upload_combined_dataframe_to_master(up_df)
                 if res["status"] == "success":
-                    st.cache_data.clear()
                     st.success(res["message"])
                     st.rerun()
                 else:
