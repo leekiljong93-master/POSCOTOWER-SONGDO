@@ -11,6 +11,7 @@ st.title("🏗️ 포타송 설계서 작성(by.PI_Lee)")
 
 db.init_db()
 
+
 def save_project_to_cloud(project_name, df):
     try:
         doc = db.get_sheet()
@@ -470,76 +471,76 @@ with tab2:
     else:
         st.warning("먼저 '설계 및 원가계산' 탭에서 공종을 추가해 주세요.")
 
-with tab3:
-    st.subheader("⚙️ 기초 데이터 관리")
+    with tab3:
+        st.subheader("⚙️ 기초 데이터 관리")
 
-    st.markdown("### 1. 데이터 확인 및 개별 관리 (인라인 편집)")
-    st.info("💡 표 안에서 직접 항목을 더블클릭해 수정하거나, 맨 아래 빈칸을 눌러 새 항목을 추가하세요. 맨 왼쪽 번호를 체크하고 Delete 키를 누르면 삭제됩니다.")
+        st.markdown("### 1. 데이터 확인 및 개별 관리 (인라인 편집)")
+        st.info("💡 표 안에서 직접 항목을 더블클릭해 수정하거나, 맨 아래 빈칸을 눌러 새 항목을 추가하세요. 맨 왼쪽 번호를 체크하고 Delete 키를 누르면 삭제됩니다.")
 
-    col_f1, col_f2 = st.columns([1, 3])
-    with col_f1:
-        cat_filter = st.selectbox("대분류 필터", ["전체", "인건비", "자재비", "장비비", "세트"])
-    with col_f2:
-        search_kw = st.text_input("항목명 또는 중분류 키워드 검색")
+        col_f1, col_f2 = st.columns([1, 3])
+        with col_f1:
+            cat_filter = st.selectbox("대분류 필터", ["전체", "인건비", "자재비", "장비비", "세트"])
+        with col_f2:
+            search_kw = st.text_input("항목명 또는 중분류 키워드 검색")
 
-    df_master = db.get_filtered_master_items(category_large=cat_filter, search_keyword=search_kw)
+        df_master = db.get_filtered_master_items(category_large=cat_filter, search_keyword=search_kw)
 
-    edited_master = st.data_editor(
-        df_master,
-        num_rows="dynamic",
-        width="stretch",
-        hide_index=False,
-        key="master_data_editor"
-    )
+        edited_master = st.data_editor(
+            df_master,
+            num_rows="dynamic",
+            width="stretch",
+            hide_index=False,
+            key="master_data_editor"
+        )
 
-    if st.button("💾 표에서 수정한 내용을 DB에 일괄 저장", type="primary", use_container_width=True, key="save_master_db_btn"):
-        if cat_filter != "전체" or search_kw != "":
-            st.warning("⚠️ 필터링이 켜져 있습니다! 데이터 유실 방지를 위해 대분류를 '전체'로, 검색어를 비운 상태에서 편집 및 저장해 주세요.")
-        else:
-            with st.spinner("번호를 정렬하고 DB에 변경사항을 덮어쓰는 중..."):
-                try:
-                    final_df = edited_master.copy()
-
-                    final_df = final_df.dropna(subset=["item_name"])
-
-                    final_df.reset_index(drop=True, inplace=True)
-                    if "번호" in final_df.columns:
-                        final_df["번호"] = final_df.index + 1
-                    elif "id" in final_df.columns:
-                        final_df["id"] = final_df.index + 1
-
-                    res = db.upload_dataframe_to_master(final_df)
-
-                    if res["status"] == "success":
-                        st.cache_data.clear()
-                        st.success("✅ 순번 정렬 및 DB 반영이 성공적으로 완료되었습니다!")
-                        st.rerun()
-                    else:
-                        st.error(res["message"])
-                except Exception as e:
-                    st.error(f"데이터 전처리 및 저장 중 오류 발생: {e}")
-
-    st.divider()
-
-    st.markdown("### 2. 데이터 대량 업로드 (Excel)")
-    st.markdown("엑셀 파일을 통해 한 번에 많은 데이터를 업데이트합니다.")
-
-    template_df = pd.DataFrame(
-        columns=["category_large", "category_mid", "item_name", "spec", "unit", "unit_price", "source"])
-    output = io.BytesIO()
-    with pd.ExcelWriter(output, engine='openpyxl') as writer:
-        template_df.to_excel(writer, index=False)
-
-    st.download_button("⬇️ 기본 양식 다운로드 (Excel)", data=output.getvalue(), file_name="master_template.xlsx",
-                       mime="application/vnd.ms-excel")
-
-    uploaded_file = st.file_uploader("작성된 엑셀 파일 업로드", type=["xlsx"])
-    if uploaded_file and st.button("🚀 일괄 업로드 실행"):
-        with st.spinner("엑셀 데이터를 DB에 업로드 중..."):
-            up_df = pd.read_excel(uploaded_file)
-            res = db.upload_dataframe_to_master(up_df)
-            if res["status"] == "success":
-                st.success(res["message"])
-                st.rerun()
+        if st.button("💾 표에서 수정한 내용을 DB에 일괄 저장", type="primary", use_container_width=True, key="save_master_db_btn"):
+            if cat_filter != "전체" or search_kw != "":
+                st.warning("⚠️ 필터링이 켜져 있습니다! 데이터 유실 방지를 위해 대분류를 '전체'로, 검색어를 비운 상태에서 편집 및 저장해 주세요.")
             else:
-                st.error(res["message"])
+                with st.spinner("번호를 정렬하고 DB에 변경사항을 덮어쓰는 중..."):
+                    try:
+                        final_df = edited_master.copy()
+
+                        final_df = final_df.dropna(subset=["item_name"])
+
+                        final_df.reset_index(drop=True, inplace=True)
+                        if "번호" in final_df.columns:
+                            final_df["번호"] = final_df.index + 1
+                        elif "id" in final_df.columns:
+                            final_df["id"] = final_df.index + 1
+
+                        res = db.upload_dataframe_to_master(final_df)
+
+                        if res["status"] == "success":
+                            st.cache_data.clear()
+                            st.success("✅ 순번 정렬 및 DB 반영이 성공적으로 완료되었습니다!")
+                            st.rerun()
+                        else:
+                            st.error(res["message"])
+                    except Exception as e:
+                        st.error(f"데이터 전처리 및 저장 중 오류 발생: {e}")
+
+        st.divider()
+
+        st.markdown("### 2. 데이터 대량 업로드 (Excel)")
+        st.markdown("엑셀 파일을 통해 한 번에 많은 데이터를 업데이트합니다.")
+
+        template_df = pd.DataFrame(
+            columns=["category_large", "category_mid", "item_name", "spec", "unit", "unit_price", "source"])
+        output = io.BytesIO()
+        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+            template_df.to_excel(writer, index=False)
+
+        st.download_button("⬇️ 기본 양식 다운로드 (Excel)", data=output.getvalue(), file_name="master_template.xlsx",
+                           mime="application/vnd.ms-excel")
+
+        uploaded_file = st.file_uploader("작성된 엑셀 파일 업로드", type=["xlsx"])
+        if uploaded_file and st.button("🚀 일괄 업로드 실행"):
+            with st.spinner("엑셀 데이터를 DB에 업로드 중..."):
+                up_df = pd.read_excel(uploaded_file)
+                res = db.upload_dataframe_to_master(up_df)
+                if res["status"] == "success":
+                    st.success(res["message"])
+                    st.rerun()
+                else:
+                    st.error(res["message"])
