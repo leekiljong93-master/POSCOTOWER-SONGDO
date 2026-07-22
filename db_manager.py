@@ -65,6 +65,36 @@ def get_filtered_master_items(sheet_name="자재비", search_keyword=""):
         return pd.DataFrame(columns=["item_name", "spec", "unit", "unit_price", "source"])
 
 
+# ------------------------------------------------------------------
+# 4개 시트(자재비/인건비/장비비/세트)를 하나의 DataFrame으로 통합 조회
+# ------------------------------------------------------------------
+MASTER_SHEET_NAMES = ["자재비", "인건비", "장비비", "세트"]
+MASTER_BASE_COLUMNS = ["item_name", "spec", "unit", "unit_price", "source"]
+
+
+@st.cache_data(ttl=300)
+def get_all_master_items_combined(search_keyword=""):
+    """4개 기초데이터 시트를 하나의 표로 합쳐서 반환. 맨 앞에 '구분' 컬럼 추가."""
+    all_dfs = []
+    for s_name in MASTER_SHEET_NAMES:
+        df = get_filtered_master_items(sheet_name=s_name, search_keyword=search_keyword)
+
+        if df.empty:
+            df = pd.DataFrame(columns=MASTER_BASE_COLUMNS)
+        else:
+            # 누락된 컬럼은 빈 값으로 채우고, 컬럼 순서 통일
+            for c in MASTER_BASE_COLUMNS:
+                if c not in df.columns:
+                    df[c] = ""
+            df = df[MASTER_BASE_COLUMNS].copy()
+
+        df.insert(0, "구분", s_name)
+        all_dfs.append(df)
+
+    combined = pd.concat(all_dfs, ignore_index=True)
+    return combined
+
+
 def get_unit_price(item_name, sheet_name=None):
     try:
         sheets = [sheet_name] if sheet_name else ["자재비", "인건비", "장비비", "세트"]
@@ -92,7 +122,6 @@ def get_cloud_projects_list():
             })
         return result
     except Exception as e:
-        import streamlit as st
         st.error(f"목록을 불러오는 중 오류 발생: {e}")
         return []
 
@@ -134,3 +163,38 @@ def upload_dataframe_to_master(df, sheet_name):
         }
     except Exception as e:
         return {"status": "error", "message": f"클라우드 DB 덮어쓰기 실패: {str(e)}"}
+
+
+# ------------------------------------------------------------------
+# 통합 표(구분 컬럼 포함)를 받아서 4개 시트로 자동 분배 업로드
+# ------------------------------------------------------------------
+def upload_combined_dataframe_to_master(df):
+    try:
+        df = df.copy()
+
+        # 필수 컬럼 보정
+        for c in ["구분"] + MASTER_BASE_COLUMNS:
+            if c not in df.columns:
+                df[c] = ""
+
+        df["구분"] = df["구분"].astype(str).str.strip()
+
+        saved_sheets = []
+        for s_name in MASTER_SHEET_NAMES:
+            sub_df = df[df["구분"] == s_name].copy()
+            sub_df = sub_df[MASTER_BASE_COLUMNS]
+
+            res = upload_dataframe_to_master(sub_df, s_name)
+            if res["status"] != "success":
+                return {"status": "error", "message": f"[{s_name}] 저장 실패: {res['message']}"}
+            saved_sheets.append(f"{s_name}({len(sub_df)}건)")
+
+        get_filtered_master_items.clear()
+        get_all_master_items_combined.clear()
+
+        return {
+            "status": "success",
+            "message": "저장 완료! → " + ", ".join(saved_sheets)
+        }
+    except Exception as e:
+        return {"status": "error", "message": f"통합 저장 중 오류 발생: {str(e)}"}
