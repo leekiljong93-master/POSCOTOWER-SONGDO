@@ -5,7 +5,7 @@ import json
 import pandas as pd
 import os
 import datetime as _dt
-
+import time
 
 # ------------------------------------------------------------------
 # 연결(커넥션) 객체는 cache_resource로 캐싱 -> open_by_url API 호출을 세션당 1회로 제한
@@ -190,28 +190,37 @@ def upload_dataframe_to_master(df, sheet_name):
 
 def upload_combined_dataframe_to_master(df):
     try:
-        df = df.copy()
-        for c in ["구분"] + MASTER_BASE_COLUMNS:
-            if c not in df.columns:
-                df[c] = ""
-        df["구분"] = df["구분"].astype(str).str.strip()
+        doc = get_sheet()
+        # 우리가 분리해서 넣을 4개의 시트 이름
+        categories = ["자재비", "인건비", "장비비", "세트"]
 
-        saved_sheets = []
-        for s_name in MASTER_SHEET_NAMES:
-            sub_df = df[df["구분"] == s_name].copy()
-            sub_df = sub_df[MASTER_BASE_COLUMNS]
+        for cat in categories:
+            # 1. 전체 데이터에서 해당 '구분'의 데이터만 쏙 빼내기
+            cat_df = df[df['구분'] == cat].copy()
 
-            res = upload_dataframe_to_master(sub_df, s_name)
-            if res["status"] != "success":
-                return {"status": "error", "message": f"[{s_name}] 저장 실패: " + str(res["message"])}
-            saved_sheets.append(f"{s_name}({len(sub_df)}건)")
+            # 해당 구글 시트 탭 열기 및 기존 데이터 초기화
+            ws = doc.worksheet(cat)
+            ws.clear()
 
-        return {
-            "status": "success",
-            "message": "저장 완료! -> " + ", ".join(saved_sheets)
-        }
+            # 2. 헤더(열 이름) 먼저 1줄 꽂아 넣기
+            columns = cat_df.columns.values.tolist()
+            ws.append_row(columns)
+
+            if cat_df.empty:
+                continue
+
+            # 🔥 3. [핵심 소화제] 데이터 5,000개씩 쪼개서 넣기 (Chunking)
+            data_list = cat_df.values.tolist()
+            chunk_size = 5000  # 한 번에 먹일 양 (5천 개)
+
+            for i in range(0, len(data_list), chunk_size):
+                chunk = data_list[i: i + chunk_size]
+                ws.append_rows(chunk)
+                time.sleep(1)  # 구글 서버가 체하지 않게 1초간 숨 쉴 틈 주기
+
+        return {"status": "success", "message": "수만 개의 데이터가 체하지 않고 안전하게 구글 시트에 분리 저장되었습니다!"}
     except Exception as e:
-        return {"status": "error", "message": f"통합 저장 중 오류 발생: {str(e)}"}
+        return {"status": "error", "message": f"DB 저장 중 오류 발생: {str(e)}"}
 
 
 def save_project_to_cloud(project_name, df):

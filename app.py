@@ -399,7 +399,7 @@ with tab3:
     col_search, col_count, col_blank = st.columns([1.2, 1, 2])
     with col_search:
         search_kw = st.text_input("항목명 검색 키워드", key="master_search_input",
-                                   placeholder="예: 철근, 레미콘, 굴착기")
+                                  placeholder="예: 철근, 레미콘, 굴착기")
 
     df_master = db.get_all_master_items_combined(search_keyword=search_kw)
     df_master.index = range(1, len(df_master) + 1)  # 화면 표시용 index 1부터 시작
@@ -439,6 +439,7 @@ with tab3:
                     res = db.upload_combined_dataframe_to_master(final_df)
 
                     if res["status"] == "success":
+                        st.cache_data.clear()
                         st.success(res["message"])
                         st.rerun()
                     else:
@@ -447,11 +448,12 @@ with tab3:
                     st.error(f"저장 중 오류 발생: {e}")
 
     st.divider()
-    st.markdown("### 2. 통합 데이터 대량 업로드 (Excel)")
-    st.info("💡 엑셀 업로드 시에도 '구분' 열을 기준으로 시스템이 4개의 시트로 알아서 분배하여 저장합니다.")
+    st.markdown("### 2. 통합 데이터 대량 업로드 (Excel / CSV)")
+    st.info("💡 일반 통합 엑셀(.xlsx)뿐만 아니라 **조달청 정기자재단가 원본 CSV 파일**도 올리시면 알아서 '자재비'로 자동 변환하여 업로드합니다!")
 
     # 통합 양식 다운로드
-    template_df = pd.DataFrame(columns=["구분", "item_name", "spec", "unit", "unit_price", "source"])
+    template_df = pd.DataFrame(
+        columns=["구분", "category_large", "category_mid", "item_name", "spec", "unit", "unit_price", "source"])
     output_template = io.BytesIO()
     with pd.ExcelWriter(output_template, engine='openpyxl') as writer:
         template_df.to_excel(writer, index=False)
@@ -459,16 +461,64 @@ with tab3:
     st.download_button("⬇️ 통합 DB 양식 다운로드 (Excel)", data=output_template.getvalue(),
                        file_name="master_combined_template.xlsx", mime="application/vnd.ms-excel")
 
-    uploaded_file = st.file_uploader("작성된 통합 엑셀 파일 업로드", type=["xlsx"])
-    if uploaded_file and st.button("🚀 통합 일괄 업로드 및 자동 분배 실행"):
-        with st.spinner("엑셀 데이터를 분석하여 각 시트별로 구글 DB에 업로드 중..."):
-            up_df = pd.read_excel(uploaded_file)
-            if "구분" not in up_df.columns:
-                st.error("⚠️ 엑셀 파일에 '구분' 컬럼이 없습니다. 통합 DB 양식을 다시 다운로드하여 작성해주세요.")
-            else:
-                res = db.upload_combined_dataframe_to_master(up_df)
-                if res["status"] == "success":
-                    st.success(res["message"])
-                    st.rerun()
-                else:
-                    st.error(res["message"])
+    # CSV와 XLSX 확장자 모두 지원
+    uploaded_file = st.file_uploader("작성된 통합 엑셀 파일 또는 조달청 CSV 파일 업로드", type=["xlsx", "csv"], key="bulk_uploader_input")
+
+    if uploaded_file is not None:
+        st.success(f"📂 업로드 준비 완료: **{uploaded_file.name}**")
+
+        if st.button("🚀 통합 일괄 업로드 및 자동 분배 실행", type="primary", use_container_width=True):
+            with st.spinner("데이터를 분석 및 정제하여 기존 DB에 안전하게 병합(Merge) 중입니다... 잠시만 기다려주세요."):
+                try:
+                    # 1. CSV 또는 Excel 파일 읽기
+                    if uploaded_file.name.endswith('.csv'):
+                        try:
+                            up_df = pd.read_csv(uploaded_file, encoding='cp949')
+                        except:
+                            up_df = pd.read_csv(uploaded_file, encoding='utf-8')
+                    else:
+                        up_df = pd.read_excel(uploaded_file)
+
+                    # 2. 조달청 원본 CSV 양식 감지 시 자동 매핑
+                    if "공통자재구분" in up_df.columns and "자원명" in up_df.columns:
+                        st.info("💡 '조달청 정기자재단가 원본' 형식을 감지하여 '자재비' 항목으로 자동 변환합니다.")
+                        up_df = pd.DataFrame({
+                            '구분': '자재비',
+                            'category_large': '자재비',
+                            'category_mid': up_df['공통자재구분'],
+                            'item_name': up_df['자원명'],
+                            'spec': up_df['자원규격명'],
+                            'unit': up_df['단위'],
+                            'unit_price': up_df['재료비단가'],
+                            'source': '조달청'
+                        })
+
+                    # 3. 단가 데이터 수치화 및 정제
+                    if 'unit_price' in up_df.columns:
+                        up_df['unit_price'] = up_df['unit_price'].astype(str).str.replace(',', '')
+                        up_df['unit_price'] = pd.to_numeric(up_df['unit_price'], errors='coerce')
+
+                    if "구분" not in up_df.columns:
+                        st.error("⚠️ 엑셀/CSV 파일에 '구분' 컬럼이 없습니다. 양식을 확인해주세요.")
+                    else:
+                        up_df = up_df.dropna(subset=["item_name", "unit_price"])
+
+                        # 🔥 [핵심 추가] 기존 데이터를 불러와서 새 데이터와 합치기 (기존 데이터 보존)
+                        existing_df = db.get_all_master_items_combined()
+                        combined_df = pd.concat([existing_df, up_df], ignore_index=True)
+
+                        # 만약 이름과 규격이 완벽히 똑같은 중복 항목이 있다면 최신(새 업로드) 값으로 덮어쓰기
+                        combined_df = combined_df.drop_duplicates(subset=['구분', 'item_name', 'spec'], keep='last')
+
+                        # 합쳐진 최종 데이터를 DB로 전송
+                        res = db.upload_combined_dataframe_to_master(combined_df)
+
+                        if res["status"] == "success":
+                            st.cache_data.clear()
+                            st.balloons()
+                            st.success("🎉 성공! 기존 데이터를 보존하면서 새로운 자재 데이터가 성공적으로 병합되었습니다.")
+                            st.rerun()
+                        else:
+                            st.error(res["message"])
+                except Exception as e:
+                    st.error(f"⚠️ 업로드 실패: {str(e)}")
