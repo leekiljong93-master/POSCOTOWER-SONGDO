@@ -19,6 +19,7 @@ st.title(config.APP_TITLE)
 db.init_db()
 config.init_session_state()
 
+
 # --- 2. 클라우드 로드 함수 ---
 def load_project_from_cloud(project_name):
     try:
@@ -30,12 +31,14 @@ def load_project_from_cloud(project_name):
     except Exception as e:
         return str(e)
 
+
 # --- 3. 사이드바 (프로젝트 및 클라우드 관리) ---
 st.sidebar.subheader("📁 설계서 작성")
 new_project = st.sidebar.text_input("새 프로젝트명 입력", placeholder="예: 포스코타워-송도 환경개선")
 if st.sidebar.button("➕ 새 프로젝트 생성", use_container_width=True) and new_project:
     if new_project not in st.session_state.projects:
-        st.session_state.projects[new_project] = pd.DataFrame(columns=["공종명", "구분", "단위", "단가", "수량", "합계", "시작일", "종료일"])
+        st.session_state.projects[new_project] = pd.DataFrame(
+            columns=["구분", "공종명", "단위", "단가", "수량", "합계", "시작일", "종료일"])
         st.session_state.current_project = new_project
         st.session_state.estimate_data = st.session_state.projects[new_project].copy()
         st.rerun()
@@ -43,7 +46,8 @@ if st.sidebar.button("➕ 새 프로젝트 생성", use_container_width=True) an
         st.sidebar.warning("이미 존재하는 프로젝트입니다.")
 
 project_list = list(st.session_state.projects.keys())
-selected_project = st.sidebar.selectbox("현재 작업 중인 현장 선택", project_list, index=project_list.index(st.session_state.current_project))
+selected_project = st.sidebar.selectbox("현재 작업 중인 현장 선택", project_list,
+                                        index=project_list.index(st.session_state.current_project))
 if selected_project != st.session_state.current_project:
     st.session_state.current_project = selected_project
     st.session_state.estimate_data = st.session_state.projects[selected_project].copy()
@@ -65,7 +69,8 @@ if st.sidebar.button("🔄 클라우드 목록 갱신/조회", use_container_wid
         st.session_state.cloud_project_list = db.get_cloud_projects_list()
 
 if st.session_state.cloud_project_list:
-    project_options = {f"📂 {proj['name']} ({proj['date']})": proj['name'] for proj in st.session_state.cloud_project_list}
+    project_options = {f"📂 {proj['name']} ({proj['date']})": proj['name'] for proj in
+                       st.session_state.cloud_project_list}
     selected_cloud_proj = project_options[st.sidebar.selectbox("불러올 프로젝트 선택", list(project_options.keys()))]
 
     if st.sidebar.button("📥 선택 프로젝트 불러오기", use_container_width=True):
@@ -78,7 +83,7 @@ if st.session_state.cloud_project_list:
                 st.rerun()
             else:
                 st.sidebar.error("데이터를 찾을 수 없거나 불러오기 실패했습니다.")
-                
+
     if st.sidebar.button("🗑️ 클라우드에서 삭제", use_container_width=True):
         ui.delete_cloud_confirmation(selected_cloud_proj)
 
@@ -102,27 +107,29 @@ with tab_dash:
     else:
         df_dash = st.session_state.estimate_data.copy()
         df_dash["합계"] = pd.to_numeric(df_dash["합계"], errors="coerce").fillna(0)
-        
+
         c1, c2, c3, c4 = st.columns(4)
         c1.metric("총 직접공사비", f"{df_dash['합계'].sum():,.0f} 원")
         c2.metric("자재비 총액", f"{df_dash[df_dash['구분'] == '자재']['합계'].sum():,.0f} 원")
         c3.metric("노무비 총액", f"{df_dash[df_dash['구분'] == '노무']['합계'].sum():,.0f} 원")
         c4.metric("장비비 총액", f"{df_dash[df_dash['구분'] == '장비']['합계'].sum():,.0f} 원")
-        
+
         st.divider()
         col_chart1, col_chart2 = st.columns(2)
         with col_chart1:
             st.markdown("**📊 자재/노무/장비 금액 비중**")
-            st.plotly_chart(px.pie(df_dash, values='합계', names='구분', hole=0.4, color_discrete_sequence=px.colors.qualitative.Pastel), use_container_width=True)
+            st.plotly_chart(px.pie(df_dash, values='합계', names='구분', hole=0.4,
+                                   color_discrete_sequence=px.colors.qualitative.Pastel), use_container_width=True)
         with col_chart2:
             st.markdown("**📈 주요 공종별 투입 금액**")
-            st.plotly_chart(px.bar(df_dash, x='공종명', y='합계', color='구분', text_auto='.2s', color_discrete_sequence=px.colors.qualitative.Pastel), use_container_width=True)
+            st.plotly_chart(px.bar(df_dash, x='공종명', y='합계', color='구분', text_auto='.2s',
+                                   color_discrete_sequence=px.colors.qualitative.Pastel), use_container_width=True)
 
 # TAB 2: 설계 및 원가계산
 with tab1:
     st.subheader("🔍 1. 품목 단가 추가")
     col1, col2, col3, col4 = st.columns(4)
-    
+
     ui.render_add_item_column(col1, "자재비", "자재비", "자재", "식", "수량", "🧱")
     ui.render_add_item_column(col2, "인건비", "인건비", "노무", "인", "인원", "👷")
     ui.render_add_item_column(col3, "장비비", "장비비", "장비", "시간", "시간", "🏗️")
@@ -138,13 +145,14 @@ with tab1:
     for col_name in ["시작일", "종료일"]:
         if col_name in display_df.columns:
             display_df[col_name] = pd.to_datetime(display_df[col_name], errors='coerce')
-    
+
     display_df.index = range(1, len(display_df) + 1)
 
     edited_df = st.data_editor(
         display_df, num_rows="dynamic", use_container_width=True,
         column_config={
-            "단위": st.column_config.SelectboxColumn("단위", options=["일", "시간", "식", "m3", "ton", "EA", "인", "대", "포", "장"]),
+            "단위": st.column_config.SelectboxColumn("단위",
+                                                   options=["일", "시간", "식", "m3", "ton", "EA", "인", "대", "포", "장"]),
             "단가": st.column_config.NumberColumn("단가(원)", format="%d"),
             "수량": st.column_config.NumberColumn("수량", format="%.2f", step=0.1),
             "합계": st.column_config.NumberColumn("합계(원)", disabled=True),
@@ -161,7 +169,7 @@ with tab1:
             st.rerun()
 
     if st.button("🗑️ 현재 프로젝트 내역 전체 비우기"):
-        st.session_state.estimate_data = pd.DataFrame(columns=["공종명", "구분", "단위", "단가", "수량", "합계", "시작일", "종료일"])
+        st.session_state.estimate_data = pd.DataFrame(columns=["구분", "공종명", "단위", "단가", "수량", "합계", "시작일", "종료일"])
         st.rerun()
 
     st.divider()
@@ -171,7 +179,8 @@ with tab1:
         r1, r2, r3, r4 = st.columns(4)
         rates = {}
         with r1:
-            rates['indirect_labor'] = st.number_input("간접노무비율(%)", value=config.DEFAULT_RATES['indirect_labor'], step=0.1)
+            rates['indirect_labor'] = st.number_input("간접노무비율(%)", value=config.DEFAULT_RATES['indirect_labor'],
+                                                      step=0.1)
             rates['sanjae'] = st.number_input("산재보험료율(%)", value=config.DEFAULT_RATES['sanjae'], step=0.1)
             rates['goyong'] = st.number_input("고용보험료율(%)", value=config.DEFAULT_RATES['goyong'], step=0.1)
         with r2:
@@ -223,7 +232,8 @@ with tab3:
 
     edited_master = st.data_editor(
         df_master, num_rows="dynamic", use_container_width=True,
-        column_config={"구분": st.column_config.SelectboxColumn("구분 (필수)", options=["자재비", "인건비", "장비비", "세트"], required=True)}
+        column_config={
+            "구분": st.column_config.SelectboxColumn("구분 (필수)", options=["자재비", "인건비", "장비비", "세트"], required=True)}
     )
 
     if st.button("💾 전체 변경사항 구글 시트에 자동 분리 저장", type="primary", use_container_width=True):
@@ -242,8 +252,9 @@ with tab3:
 
     st.divider()
     st.markdown("### 2. 통합 데이터 대량 업로드 (Excel / CSV)")
-    
-    template_df = pd.DataFrame(columns=["구분", "category_large", "category_mid", "item_name", "spec", "unit", "unit_price", "source"])
+
+    template_df = pd.DataFrame(
+        columns=["구분", "category_large", "category_mid", "item_name", "spec", "unit", "unit_price", "source"])
     output_template = io.BytesIO()
     template_df.to_excel(pd.ExcelWriter(output_template, engine='openpyxl'), index=False)
     st.download_button("⬇️ 통합 DB 양식 다운로드", data=output_template.getvalue(), file_name="master_template.xlsx")
@@ -252,8 +263,9 @@ with tab3:
     if uploaded_file and st.button("🚀 통합 일괄 업로드 및 자동 분배 실행", type="primary", use_container_width=True):
         with st.spinner("데이터 분석 및 병합 중..."):
             try:
-                up_df = pd.read_csv(uploaded_file, encoding='cp949' if uploaded_file.name.endswith('.csv') else 'utf-8') if uploaded_file.name.endswith('.csv') else pd.read_excel(uploaded_file)
-                
+                up_df = pd.read_csv(uploaded_file, encoding='cp949' if uploaded_file.name.endswith(
+                    '.csv') else 'utf-8') if uploaded_file.name.endswith('.csv') else pd.read_excel(uploaded_file)
+
                 if "공통자재구분" in up_df.columns and "자원명" in up_df.columns:
                     st.info("💡 조달청 형식을 감지하여 '자재비'로 자동 변환합니다.")
                     up_df = pd.DataFrame({
@@ -263,7 +275,8 @@ with tab3:
                     })
 
                 if 'unit_price' in up_df.columns:
-                    up_df['unit_price'] = pd.to_numeric(up_df['unit_price'].astype(str).str.replace(',', ''), errors='coerce')
+                    up_df['unit_price'] = pd.to_numeric(up_df['unit_price'].astype(str).str.replace(',', ''),
+                                                        errors='coerce')
 
                 if "구분" not in up_df.columns:
                     st.error("⚠️ '구분' 컬럼이 없습니다.")
@@ -271,7 +284,7 @@ with tab3:
                     up_df = up_df.dropna(subset=["item_name", "unit_price"])
                     combined_df = pd.concat([db.get_all_master_items_combined(), up_df], ignore_index=True)
                     combined_df = combined_df.drop_duplicates(subset=['구분', 'item_name', 'spec'], keep='last')
-                    
+
                     res = db.upload_combined_dataframe_to_master(combined_df)
                     if res["status"] == "success":
                         st.balloons()
