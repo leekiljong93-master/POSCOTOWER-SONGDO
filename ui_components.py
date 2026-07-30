@@ -153,14 +153,16 @@ def render_add_item_column(col, title, category_large, gubun_type, default_unit,
 # -------------------------------------------------------------
 # 다이얼로그 (팝업창) 로직
 # -------------------------------------------------------------
-@st.dialog("⚠️ 프로젝트 삭제 확인")
+@st.dialog("⚠️ 현재 프로젝트 삭제 확인")
 def delete_confirmation(project_name):
-    st.error(f"**'{project_name}'** 프로젝트를 정말로 삭제하시겠습니까?\n\n삭제된 데이터는 **절대 복구할 수 없습니다.**")
+    st.warning(
+        f"**'{project_name}'** 프로젝트를 현재 브라우저 작업 목록에서 삭제하시겠습니까?\n\n"
+        "☁️ Google Sheets에 저장된 프로젝트는 삭제되지 않으며, 클라우드 보관소에서 다시 불러올 수 있습니다."
+    )
     c1, c2 = st.columns(2)
-    if c1.button("🔥 정말 삭제하기", use_container_width=True):
+    if c1.button("🗑️ 현재 목록에서 삭제", use_container_width=True):
         if project_name in st.session_state.projects:
             del st.session_state.projects[project_name]
-        db.delete_project_from_cloud(project_name)
 
         # 빈 프로젝트 생성 시에도 '규격' 컬럼 포함 보장
         desired_order = ["구분", "공종명", "규격", "단위", "단가", "수량", "합계", "시작일", "종료일"]
