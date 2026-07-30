@@ -16,7 +16,15 @@ st.set_page_config(
 )
 st.title(config.APP_TITLE)
 
-db.init_db()
+if not db.init_db():
+    st.error("⚠️ Google Sheets에 연결할 수 없습니다.")
+    st.info(
+        "관리자에게 다음 설정을 확인해 달라고 요청하세요: "
+        "Streamlit secrets의 GOOGLE_CREDENTIALS·SPREADSHEET_URL, "
+        "서비스 계정의 스프레드시트 편집 권한, 그리고 Google Sheets API 활성화 여부."
+    )
+    st.stop()
+
 config.init_session_state()
 
 
