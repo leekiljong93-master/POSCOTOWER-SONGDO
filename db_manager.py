@@ -8,6 +8,79 @@ import datetime as _dt
 import time
 from config import MASTER_SHEET_NAMES, MASTER_BASE_COLUMNS
 
+BACKUP_PREFIX = "_백업_"
+BACKUP_LIMIT = 10
+
+
+def _backup_sheet_name(backup_id, sheet_name):
+    return f"{BACKUP_PREFIX}{backup_id}_{sheet_name}"
+
+
+def _backup_ids(doc):
+    backup_ids = set()
+    for worksheet in doc.worksheets():
+        if worksheet.title.startswith(BACKUP_PREFIX):
+            remainder = worksheet.title[len(BACKUP_PREFIX):]
+            backup_id, separator, _ = remainder.rpartition("_")
+            if separator and backup_id:
+                backup_ids.add(backup_id)
+    return sorted(backup_ids, reverse=True)
+
+
+def _remove_expired_backups(doc):
+    for backup_id in _backup_ids(doc)[BACKUP_LIMIT:]:
+        for worksheet in doc.worksheets():
+            if worksheet.title.startswith(f"{BACKUP_PREFIX}{backup_id}_"):
+                doc.del_worksheet_by_id(worksheet.id)
+
+
+def create_master_backup(doc=None):
+    """현재 마스터 시트 4개를 복구 가능한 스냅샷으로 보관한다."""
+    doc = doc or get_sheet()
+    backup_id = _dt.datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+
+    for sheet_name in MASTER_SHEET_NAMES:
+        source = doc.worksheet(sheet_name)
+        doc.duplicate_sheet(
+            source.id,
+            new_sheet_name=_backup_sheet_name(backup_id, sheet_name)
+        )
+
+    _remove_expired_backups(doc)
+    return backup_id
+
+
+def get_master_backup_ids():
+    return _backup_ids(get_sheet())
+
+
+def restore_master_backup(backup_id):
+    """선택한 스냅샷으로 복구하기 전 현재 데이터도 먼저 백업한다."""
+    try:
+        doc = get_sheet()
+        backup_values = {}
+
+        for sheet_name in MASTER_SHEET_NAMES:
+            backup = doc.worksheet(_backup_sheet_name(backup_id, sheet_name))
+            backup_values[sheet_name] = backup.get_all_values()
+
+        current_backup_id = create_master_backup(doc)
+
+        for sheet_name, values in backup_values.items():
+            target = doc.worksheet(sheet_name)
+            target.clear()
+            if values:
+                target.update(values, "A1")
+
+        _get_master_items_raw.clear()
+        return {
+            "status": "success",
+            "message": f"{backup_id} 백업으로 복구했습니다. 복구 전 데이터는 {current_backup_id} 백업에 보관되었습니다."
+        }
+    except Exception as e:
+        return {"status": "error", "message": f"백업 복구 실패: {str(e)}"}
+
+
 @st.cache_resource(show_spinner=False)
 def get_gsheet_client():
     if os.path.exists("service_account.json"):
@@ -140,6 +213,8 @@ def save_project_to_cloud(project_name, df):
 def upload_combined_dataframe_to_master(df):
     try:
         doc = get_sheet()
+        backup_id = create_master_backup(doc)
+
         for cat in MASTER_SHEET_NAMES:
             cat_df = df[df['구분'] == cat].copy()
             ws = doc.worksheet(cat)
@@ -157,6 +232,9 @@ def upload_combined_dataframe_to_master(df):
                 time.sleep(1)
                 
         _get_master_items_raw.clear()
-        return {"status": "success", "message": "수만 개의 데이터가 체하지 않고 안전하게 구글 시트에 분리 저장되었습니다!"}
+        return {
+            "status": "success",
+            "message": f"저장 완료! 저장 전 데이터는 {backup_id} 백업으로 보관되었습니다."
+        }
     except Exception as e:
         return {"status": "error", "message": f"DB 저장 중 오류 발생: {str(e)}"}
