@@ -310,6 +310,32 @@ with tab3:
                 else:
                     st.error(res["message"])
 
+    with st.expander("🛟 마스터 데이터 백업 및 복구"):
+        backup_ids = db.get_master_backup_ids()
+        if backup_ids:
+            selected_backup = st.selectbox(
+                "복구할 백업 시점",
+                backup_ids,
+                format_func=lambda backup_id: backup_id.replace("_", " ", 1)
+            )
+            restore_confirmed = st.checkbox(
+                "현재 마스터 데이터를 선택한 백업으로 덮어쓰는 것을 확인했습니다.",
+                key="confirm_master_restore"
+            )
+            if st.button("♻️ 선택 백업으로 복구", use_container_width=True):
+                if not restore_confirmed:
+                    st.warning("복구 전 확인란을 선택해주세요.")
+                else:
+                    with st.spinner("복구 중..."):
+                        result = db.restore_master_backup(selected_backup)
+                    if result["status"] == "success":
+                        st.success(result["message"])
+                        st.rerun()
+                    else:
+                        st.error(result["message"])
+        else:
+            st.caption("아직 생성된 마스터 데이터 백업이 없습니다. 저장할 때마다 최근 10개 백업이 자동 보관됩니다.")
+
     st.divider()
     st.markdown("### 2. 통합 데이터 대량 업로드 (Excel / CSV)")
 
