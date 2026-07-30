@@ -2,11 +2,14 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 import io
+from datetime import datetime
 
 import config
 import db_manager as db
 import logic_calculator as calc
 import ui_components as ui
+
+XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
 # --- 1. 페이지 설정 및 초기화 ---
 st.set_page_config(
@@ -33,12 +36,13 @@ def load_project_from_cloud(project_name):
     try:
         ws = db.get_sheet().worksheet("프로젝트저장소")
         for row in ws.get_all_values()[1:]:
-            if row[0] == project_name and row[2]:
-                return pd.read_json(io.StringIO(row[2]), orient='records')
+            padded = list(row) + ["", "", ""]
+            saved_name, _, payload = padded[0:3]
+            if saved_name == project_name and payload:
+                return pd.read_json(io.StringIO(payload), orient='records')
         return None
     except Exception as e:
         return str(e)
-
 
 # 전체 항목 삭제 확인 팝업
 @st.dialog("⚠️ 전체 항목 삭제 확인")
@@ -83,6 +87,15 @@ st.sidebar.button(
     disabled=(len(st.session_state.projects) <= 1),
     on_click=ui.delete_confirmation,
     args=(st.session_state.current_project,)
+)
+
+st.sidebar.divider()
+st.sidebar.subheader("📝 문서 작성 정보")
+writer_name = st.sidebar.text_input(
+    "작성자 / 부서",
+    value=st.session_state.get("writer_name", "포스코타워-송도 (이름/직급)"),
+    key="writer_name",
+    help="견적서 엑셀 상단 제목 블록에 표기됩니다."
 )
 
 st.sidebar.divider()
@@ -184,7 +197,7 @@ with tab1:
         if col_name in display_df.columns:
             display_df[col_name] = pd.to_datetime(display_df[col_name], errors='coerce')
 
-    # ✨ [수정] 1부터 시작하는 인덱스 지정 및 인덱스 이름("NO.") 설정
+    # ✨ 1부터 시작하는 인덱스 지정 및 인덱스 이름("NO.") 설정
     display_df.index = range(1, len(display_df) + 1)
     display_df.index.name = "NO."
 
@@ -258,13 +271,35 @@ with tab1:
     summary_df = pd.DataFrame(calc.calculate_cost_summary(st.session_state.estimate_data, rates))
     st.dataframe(summary_df, use_container_width=True, hide_index=True)
 
+    # ✨ [수정] 서식 적용 엑셀 다운로드 (공사명·작성자·제비율 시트 포함)
     if not st.session_state.estimate_data.empty:
-        excel_bytes = calc.generate_excel_bytes(st.session_state.estimate_data, summary_df)
+        st.markdown("##### 📥 4. 견적서 산출물 다운로드")
+        d1, d2 = st.columns([1, 3])
+        with d1:
+            include_rates = st.checkbox("제비율 시트 포함", value=True, key="chk_rates_sheet")
+        with d2:
+            st.caption("갑지(원가계산서) · 을지(세부내역서) 2개 시트로 구성되며, A4 인쇄 서식이 적용되어 있습니다.")
+
+        with st.spinner("엑셀 생성 중..."):
+            excel_bytes = calc.generate_excel_bytes(
+                estimate_df=st.session_state.estimate_data,
+                summary_df=summary_df,
+                project_name=st.session_state.current_project,
+                writer_name=st.session_state.get("writer_name", "시설관리팀"),
+                rates=rates if include_rates else None,
+            )
+
         st.download_button(
             "📊 견적서 엑셀 다운로드",
             data=excel_bytes,
-            file_name=f"{st.session_state.current_project}_견적서.xlsx"
+            file_name=f"{st.session_state.current_project}_원가계산서_{datetime.now():%Y%m%d}.xlsx",
+            mime=XLSX_MIME,
+            type="primary",
+            use_container_width=True,
+            key="dl_estimate_xlsx",
         )
+    else:
+        st.info("세부 내역서에 항목을 1건 이상 입력하면 견적서 엑셀을 다운로드할 수 있습니다.")
 
 # TAB 3: 자동 공정표
 with tab2:
@@ -285,7 +320,7 @@ with tab3:
     search_kw = col_search.text_input("항목명 검색 키워드", placeholder="예: 철근, 굴착기")
 
     df_master = db.get_all_master_items_combined(search_keyword=search_kw)
-    # ✨ [수정] 1부터 시작하는 인덱스 지정 및 인덱스 이름("NO.") 설정
+    # ✨ 1부터 시작하는 인덱스 지정 및 인덱스 이름("NO.") 설정
     df_master.index = range(1, len(df_master) + 1)
     df_master.index.name = "NO."
     col_count.caption(f"\n🔎 검색 결과: **{len(df_master):,}건**")
@@ -339,11 +374,19 @@ with tab3:
     st.divider()
     st.markdown("### 2. 통합 데이터 대량 업로드 (Excel / CSV)")
 
+    # ✨ [버그수정] ExcelWriter를 with문으로 닫아야 실제 바이트가 기록됨 (기존 코드는 0바이트 빈 파일 생성)
     template_df = pd.DataFrame(
         columns=["구분", "category_large", "category_mid", "item_name", "spec", "unit", "unit_price", "source"])
     output_template = io.BytesIO()
-    template_df.to_excel(pd.ExcelWriter(output_template, engine='openpyxl'), index=False)
-    st.download_button("⬇️ 통합 DB 양식 다운로드", data=output_template.getvalue(), file_name="master_template.xlsx")
+    with pd.ExcelWriter(output_template, engine='openpyxl') as tpl_writer:
+        template_df.to_excel(tpl_writer, index=False, sheet_name="통합DB양식")
+    st.download_button(
+        "⬇️ 통합 DB 양식 다운로드",
+        data=output_template.getvalue(),
+        file_name="master_template.xlsx",
+        mime=XLSX_MIME,
+        key="dl_master_template",
+    )
 
     uploaded_file = st.file_uploader("작성된 통합 엑셀 파일 또는 조달청 CSV 파일 업로드", type=["xlsx", "csv"])
     if uploaded_file and st.button("🚀 통합 일괄 업로드 및 자동 분배 실행", type="primary", use_container_width=True):
