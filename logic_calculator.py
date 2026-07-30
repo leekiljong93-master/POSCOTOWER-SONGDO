@@ -15,6 +15,10 @@ from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 
+import config
+
+log = config.get_logger("calc")
+
 # ═══════════════════════════════════════════════════════════
 # 0. 서식 상수 (Design Token) — 여기만 바꾸면 전체 톤 일괄 변경
 # ═══════════════════════════════════════════════════════════
@@ -44,11 +48,59 @@ QTY_KEYS    = ("수량", "규격수량", "인원", "공수", "일수")
 # ═══════════════════════════════════════════════════════════
 # 1. 원가계산 순수 연산 로직 (기존 로직 그대로 유지)
 # ═══════════════════════════════════════════════════════════
+def _amount_series(df_calc):
+    """'합계' 열을 안전하게 숫자 Series로 변환.
+
+    [패치 ④] 기존 코드는 문자열이 섞인 '합계'를 그대로 sum() 하여
+             문자열 연결이나 TypeError가 날 수 있었다. (클라우드 JSON 복원 시 발생)
+    """
+    if df_calc is None or df_calc.empty or "합계" not in df_calc.columns:
+        return pd.Series(dtype="float64")
+    return config.to_number_series(df_calc["합계"])
+
+
+def _sum_by_cost_group(df_calc, target):
+    """원가 집계 비목별 합계. '구분' 표기가 달라도 config 매핑으로 정규화한다."""
+    amounts = _amount_series(df_calc)
+    if amounts.empty:
+        return 0
+    groups = config.cost_group_series(df_calc)
+    if groups.empty:
+        return 0
+    return int(amounts[groups == target].sum())
+
+
+def audit_categories(df_calc):
+    """[패치 ④] 원가계산에 반영되지 못한 행을 찾아낸다.
+
+    반환: {"counted": {비목: 금액}, "unknown": {원본표기: 금액}, "unknown_rows": n}
+    UI는 unknown 이 있으면 반드시 경고를 띄워야 한다. (금액 누락 = 견적 오류)
+    """
+    result = {"counted": {}, "unknown": {}, "unknown_rows": 0, "total": 0}
+    if df_calc is None or df_calc.empty or "구분" not in df_calc.columns:
+        return result
+
+    amounts = _amount_series(df_calc)
+    groups = config.cost_group_series(df_calc)
+    result["total"] = int(amounts.sum())
+
+    for group in config.COST_GROUPS:
+        result["counted"][group] = int(amounts[groups == group].sum())
+
+    unknown_mask = groups.isna()
+    if unknown_mask.any():
+        result["unknown_rows"] = int(unknown_mask.sum())
+        for label, part in df_calc[unknown_mask].groupby(df_calc.loc[unknown_mask, "구분"].astype(str)):
+            result["unknown"][label] = int(_amount_series(part).sum())
+        log.warning("원가계산 미반영 행 %d건: %s", result["unknown_rows"], result["unknown"])
+    return result
+
+
 def calculate_cost_summary(df_calc, rates):
     """조달청 기준 원가계산서(갑지) 산출 순수 연산 로직"""
-    direct_material = df_calc[df_calc['구분'] == '자재']['합계'].sum() if not df_calc.empty else 0
-    direct_labor    = df_calc[df_calc['구분'] == '노무']['합계'].sum() if not df_calc.empty else 0
-    equipment_exp   = df_calc[df_calc['구분'] == '장비']['합계'].sum() if not df_calc.empty else 0
+    direct_material = _sum_by_cost_group(df_calc, "자재")
+    direct_labor    = _sum_by_cost_group(df_calc, "노무")
+    equipment_exp   = _sum_by_cost_group(df_calc, "장비")
     direct_cost_total = direct_material + direct_labor + equipment_exp
 
     indirect_labor = int(direct_labor * (rates['indirect_labor'] / 100))
@@ -63,8 +115,8 @@ def calculate_cost_summary(df_calc, rates):
     env_cost      = int(direct_cost_total * (rates['env'] / 100))
     safety_base   = int((direct_material + direct_labor) * (rates['safety'] / 100))
 
-    safety_mgt = 0 if direct_cost_total < 20000000 else safety_base
-    safety_calc_reason = "총 공사금액 2천만 원 미만 제외" if direct_cost_total < 20000000 \
+    safety_mgt = 0 if direct_cost_total < config.SAFETY_EXEMPTION_LIMIT else safety_base
+    safety_calc_reason = "총 공사금액 2천만 원 미만 제외" if direct_cost_total < config.SAFETY_EXEMPTION_LIMIT \
         else f"(재료비+직접노무비) × {rates['safety']}%"
 
     etc_exp = int((direct_material + total_labor) * (rates['etc_exp'] / 100))
