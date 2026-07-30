@@ -34,8 +34,10 @@ def get_sheet():
     return client.open_by_url(st.secrets["SPREADSHEET_URL"])
 
 def init_db():
+    """Google Sheets 연결과 필수 워크시트를 준비한다."""
     if st.session_state.get("_db_initialized"):
-        return
+        return True
+
     try:
         doc = get_sheet()
         existing = [ws.title for ws in doc.worksheets()]
@@ -46,8 +48,9 @@ def init_db():
             doc.add_worksheet(title="프로젝트저장소", rows="1000", cols="10").append_row(
                 ["project_name", "date", "data_json"])
         st.session_state["_db_initialized"] = True
+        return True
     except Exception:
-        pass
+        return False
 
 @st.cache_data(ttl=600, show_spinner=False)
 def _get_master_items_raw(sheet_name):
