@@ -158,7 +158,7 @@ with tab1:
     st.divider()
     st.subheader(f"📄 2. 세부 내역서 (을지) - {st.session_state.current_project}")
 
-    # ✅ 과거에 만들어졌던 '선택' 컬럼이 있다면 깔끔하게 청소
+    # 과거에 만들어졌던 '선택' 컬럼이 있다면 깔끔하게 청소
     if "선택" in st.session_state.estimate_data.columns:
         st.session_state.estimate_data = st.session_state.estimate_data.drop(columns=["선택"])
 
@@ -176,17 +176,19 @@ with tab1:
         if col_name in display_df.columns:
             display_df[col_name] = pd.to_datetime(display_df[col_name], errors='coerce')
 
+    # ✨ [수정] 1부터 시작하는 인덱스 지정 및 인덱스 이름("NO.") 설정
+    display_df.index = range(1, len(display_df) + 1)
+    display_df.index.name = "NO."
+
     column_order = ["구분", "공종명", "규격", "단위", "단가", "수량", "합계", "시작일", "종료일"]
     cols_exist = [c for c in column_order if c in display_df.columns]
 
-    # ✅ selection_mode="multi-row" 옵션을 통해 내장 체크박스 활성화
     edited_df = st.data_editor(
         display_df,
         column_order=cols_exist,
         num_rows="dynamic",
-        selection_mode="multi-row",  # 👈 데이터에는 남지 않고, UI에서만 보이는 체크박스 생성
         use_container_width=True,
-        hide_index=True,
+        hide_index=False,  # 인덱스 열 보이기
         column_config={
             "구분": st.column_config.SelectboxColumn("구분", options=["자재", "노무", "장비", "세트"]),
             "공종명": st.column_config.TextColumn("공종명"),
@@ -198,8 +200,7 @@ with tab1:
             "합계": st.column_config.NumberColumn("합계(원)", disabled=True),
             "시작일": st.column_config.DateColumn("시작일", format="YYYY-MM-DD"),
             "종료일": st.column_config.DateColumn("종료일", format="YYYY-MM-DD"),
-        },
-        key="estimate_data_editor"
+        }
     )
 
     # 데이터 변경사항 저장 및 자동 합계 계산
@@ -212,29 +213,13 @@ with tab1:
         if not edited_df.equals(st.session_state.estimate_data):
             st.session_state.estimate_data = edited_df
 
-    # ---------------- ✨ 우측 하단 정렬 삭제 버튼 영역 ✨ ----------------
-    col_space, col_btn_sel, col_btn_all = st.columns([6, 2, 2])
+    # UI 개선: 내장 삭제 기능 안내 & 전체 삭제 버튼
+    st.info(
+        "💡 **항목 삭제 방법:** 표 맨 왼쪽의 **NO. 칸**을 마우스로 클릭하여 행을 선택한 후, **키보드의 `Delete` 키**를 누르거나 우측 상단에 뜨는 **휴지통 아이콘(🗑️)**을 누르시면 삭제됩니다.")
 
-    with col_btn_sel:
-        if st.button("🗑️ 선택 삭제", use_container_width=True, key="del_selected_btn"):
-
-            # ✅ 가짜 열 대신, Streamlit의 내장 선택 상태를 안전하게 가져와서 삭제
-            editor_state = st.session_state.get("estimate_data_editor", {})
-            selections = editor_state.get("selection", {})
-            selected_rows = selections.get("rows", [])  # 사용자가 체크한 행 번호(인덱스) 리스트
-
-            if selected_rows:
-                # 선택된 행 번호를 기반으로 삭제 (데이터가 깔끔하게 유지됨)
-                st.session_state.estimate_data = st.session_state.estimate_data.drop(selected_rows).reset_index(
-                    drop=True)
-                st.success(f"✅ {len(selected_rows)}개 항목이 깔끔하게 삭제되었습니다.")
-                st.rerun()
-            else:
-                st.warning("⚠️ 표 맨 왼쪽의 체크박스를 클릭하여 삭제할 항목을 선택해 주세요.")
-
+    col_blank, col_btn_all = st.columns([7, 3])
     with col_btn_all:
-        # 전체 삭제 전용 빨간색 버튼
-        if st.button("💣 전체 삭제", type="primary", use_container_width=True, key="del_all_btn"):
+        if st.button("🚨 전체 내역 비우기", type="primary", use_container_width=True, key="del_all_btn"):
             delete_all_confirmation()
 
     st.divider()
@@ -292,7 +277,9 @@ with tab3:
     search_kw = col_search.text_input("항목명 검색 키워드", placeholder="예: 철근, 굴착기")
 
     df_master = db.get_all_master_items_combined(search_keyword=search_kw)
+    # ✨ [수정] 1부터 시작하는 인덱스 지정 및 인덱스 이름("NO.") 설정
     df_master.index = range(1, len(df_master) + 1)
+    df_master.index.name = "NO."
     col_count.caption(f"\n🔎 검색 결과: **{len(df_master):,}건**")
 
     edited_master = st.data_editor(
@@ -301,7 +288,7 @@ with tab3:
             "구분": st.column_config.SelectboxColumn("구분 (필수)", options=["자재비", "인건비", "장비비", "세트"], required=True)}
     )
 
-    if st.button("💾 전체 변경사항 구글 시트에 자동 분리 저장", type="primary", use_container_width=True):
+    if st.button("💾 전체 변경사항 구글 시트에 자동 분리 저장", type="primary", use_container_width=True, key="save_master_db_btn"):
         if search_kw:
             st.warning("⚠️ 검색어가 입력된 상태에서는 데이터가 유실될 수 있습니다. 검색어를 비우고 저장해주세요.")
         else:
