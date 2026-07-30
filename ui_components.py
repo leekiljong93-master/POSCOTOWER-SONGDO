@@ -122,12 +122,11 @@ def render_add_item_column(col, title, category_large, gubun_type, default_unit,
 
             cleaned_spec_val = get_cleaned_spec(raw_spec, final_item_name)
 
-            if cleaned_spec_val:
-                final_item_name = f"{final_item_name} ({cleaned_spec_val})"
-
+            # 💡 [핵심 변경 사항] 공종명에 스펙을 괄호로 붙이지 않고, '규격' 열을 따로 분리합니다.
             new_row = {
                 "구분": gubun_type,
-                "공종명": final_item_name,
+                "공종명": final_item_name,  # 이름만 깔끔하게 저장
+                "규격": cleaned_spec_val if cleaned_spec_val else "",  # 규격만 따로 저장
                 "단위": unit,
                 "단가": user_price,
                 "수량": qty,
@@ -142,8 +141,8 @@ def render_add_item_column(col, title, category_large, gubun_type, default_unit,
                 ignore_index=True
             )
 
-            # 🌟 [핵심 수정] 컬럼 순서를 '구분'이 가장 맨 앞으로 오도록 강제 재정렬합니다.
-            desired_order = ["구분", "공종명", "단위", "단가", "수량", "합계", "시작일", "종료일"]
+            # 🌟 [핵심 수정] 컬럼 순서를 '규격'이 포함되도록 재정렬합니다.
+            desired_order = ["구분", "공종명", "규격", "단위", "단가", "수량", "합계", "시작일", "종료일"]
             existing_cols = [c for c in desired_order if c in st.session_state.estimate_data.columns] + \
                             [c for c in st.session_state.estimate_data.columns if c not in desired_order]
             st.session_state.estimate_data = st.session_state.estimate_data[existing_cols]
@@ -163,7 +162,8 @@ def delete_confirmation(project_name):
             del st.session_state.projects[project_name]
         db.delete_project_from_cloud(project_name)
 
-        desired_order = ["구분", "공종명", "단위", "단가", "수량", "합계", "시작일", "종료일"]
+        # 빈 프로젝트 생성 시에도 '규격' 컬럼 포함 보장
+        desired_order = ["구분", "공종명", "규격", "단위", "단가", "수량", "합계", "시작일", "종료일"]
         if st.session_state.projects:
             st.session_state.current_project = list(st.session_state.projects.keys())[0]
         else:

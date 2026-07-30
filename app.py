@@ -20,7 +20,7 @@ db.init_db()
 config.init_session_state()
 
 
-# --- 2. 클라우드 로드 함수 ---
+# --- 2. 클라우드 로드 및 팝업 함수 ---
 def load_project_from_cloud(project_name):
     try:
         ws = db.get_sheet().worksheet("프로젝트저장소")
@@ -32,13 +32,29 @@ def load_project_from_cloud(project_name):
         return str(e)
 
 
+# 전체 항목 삭제 확인 팝업
+@st.dialog("⚠️ 전체 항목 삭제 확인")
+def delete_all_confirmation():
+    st.error("현재 프로젝트의 모든 내역을 정말로 삭제하시겠습니까?\n\n삭제된 데이터는 절대 복구할 수 없습니다.")
+    c1, c2 = st.columns(2)
+
+    if c1.button("🔥 완전히 비우기", type="primary", use_container_width=True):
+        # 표의 컬럼 구조는 남기고 데이터만 싹 비우기 (순수 데이터 컬럼만)
+        st.session_state.estimate_data = pd.DataFrame(columns=["구분", "공종명", "규격", "단위", "단가", "수량", "합계", "시작일", "종료일"])
+        st.rerun()
+
+    if c2.button("취소", use_container_width=True):
+        st.rerun()
+
+
 # --- 3. 사이드바 (프로젝트 및 클라우드 관리) ---
 st.sidebar.subheader("📁 설계서 작성")
 new_project = st.sidebar.text_input("새 프로젝트명 입력", placeholder="예: 포스코타워-송도 환경개선")
 if st.sidebar.button("➕ 새 프로젝트 생성", use_container_width=True) and new_project:
     if new_project not in st.session_state.projects:
+        # 가짜 열 없이 순수하게 생성
         st.session_state.projects[new_project] = pd.DataFrame(
-            columns=["구분", "공종명", "단위", "단가", "수량", "합계", "시작일", "종료일"])
+            columns=["구분", "공종명", "규격", "단위", "단가", "수량", "합계", "시작일", "종료일"])
         st.session_state.current_project = new_project
         st.session_state.estimate_data = st.session_state.projects[new_project].copy()
         st.rerun()
@@ -89,6 +105,10 @@ if st.session_state.cloud_project_list:
 
 if st.sidebar.button("💾 현재 프로젝트 클라우드 저장", use_container_width=True, type="primary"):
     with st.spinner("기록 중..."):
+        # 저장 전 혹시 모를 '선택' 컬럼 찌꺼기 제거
+        if "선택" in st.session_state.estimate_data.columns:
+            st.session_state.estimate_data = st.session_state.estimate_data.drop(columns=["선택"])
+
         st.session_state.projects[st.session_state.current_project] = st.session_state.estimate_data.copy()
         res = db.save_project_to_cloud(st.session_state.current_project, st.session_state.estimate_data)
         if res is True:
@@ -138,7 +158,17 @@ with tab1:
     st.divider()
     st.subheader(f"📄 2. 세부 내역서 (을지) - {st.session_state.current_project}")
 
+    # ✅ 과거에 만들어졌던 '선택' 컬럼이 있다면 깔끔하게 청소
+    if "선택" in st.session_state.estimate_data.columns:
+        st.session_state.estimate_data = st.session_state.estimate_data.drop(columns=["선택"])
+
+    if "규격" not in st.session_state.estimate_data.columns:
+        idx = st.session_state.estimate_data.columns.get_loc(
+            "공종명") + 1 if "공종명" in st.session_state.estimate_data.columns else 1
+        st.session_state.estimate_data.insert(idx, "규격", "")
+
     display_df = st.session_state.estimate_data.copy()
+
     for col_name in ["단가", "수량", "합계"]:
         if col_name in display_df.columns:
             display_df[col_name] = pd.to_numeric(display_df[col_name], errors='coerce').fillna(0)
@@ -146,11 +176,21 @@ with tab1:
         if col_name in display_df.columns:
             display_df[col_name] = pd.to_datetime(display_df[col_name], errors='coerce')
 
-    display_df.index = range(1, len(display_df) + 1)
+    column_order = ["구분", "공종명", "규격", "단위", "단가", "수량", "합계", "시작일", "종료일"]
+    cols_exist = [c for c in column_order if c in display_df.columns]
 
+    # ✅ selection_mode="multi-row" 옵션을 통해 내장 체크박스 활성화
     edited_df = st.data_editor(
-        display_df, num_rows="dynamic", use_container_width=True,
+        display_df,
+        column_order=cols_exist,
+        num_rows="dynamic",
+        selection_mode="multi-row",  # 👈 데이터에는 남지 않고, UI에서만 보이는 체크박스 생성
+        use_container_width=True,
+        hide_index=True,
         column_config={
+            "구분": st.column_config.SelectboxColumn("구분", options=["자재", "노무", "장비", "세트"]),
+            "공종명": st.column_config.TextColumn("공종명"),
+            "규격": st.column_config.TextColumn("규격"),
             "단위": st.column_config.SelectboxColumn("단위",
                                                    options=["일", "시간", "식", "m3", "ton", "EA", "인", "대", "포", "장"]),
             "단가": st.column_config.NumberColumn("단가(원)", format="%d"),
@@ -158,19 +198,44 @@ with tab1:
             "합계": st.column_config.NumberColumn("합계(원)", disabled=True),
             "시작일": st.column_config.DateColumn("시작일", format="YYYY-MM-DD"),
             "종료일": st.column_config.DateColumn("종료일", format="YYYY-MM-DD"),
-        }
+        },
+        key="estimate_data_editor"
     )
 
+    # 데이터 변경사항 저장 및 자동 합계 계산
     if not edited_df.empty:
         edited_df = edited_df.reset_index(drop=True)
-        edited_df["합계"] = (edited_df["단가"] * edited_df["수량"]).astype(int)
+        if "단가" in edited_df.columns and "수량" in edited_df.columns:
+            edited_df["합계"] = (pd.to_numeric(edited_df["단가"], errors='coerce').fillna(0) *
+                               pd.to_numeric(edited_df["수량"], errors='coerce').fillna(0)).astype(int)
+
         if not edited_df.equals(st.session_state.estimate_data):
             st.session_state.estimate_data = edited_df
-            st.rerun()
 
-    if st.button("🗑️ 현재 프로젝트 내역 전체 비우기"):
-        st.session_state.estimate_data = pd.DataFrame(columns=["구분", "공종명", "단위", "단가", "수량", "합계", "시작일", "종료일"])
-        st.rerun()
+    # ---------------- ✨ 우측 하단 정렬 삭제 버튼 영역 ✨ ----------------
+    col_space, col_btn_sel, col_btn_all = st.columns([6, 2, 2])
+
+    with col_btn_sel:
+        if st.button("🗑️ 선택 삭제", use_container_width=True, key="del_selected_btn"):
+
+            # ✅ 가짜 열 대신, Streamlit의 내장 선택 상태를 안전하게 가져와서 삭제
+            editor_state = st.session_state.get("estimate_data_editor", {})
+            selections = editor_state.get("selection", {})
+            selected_rows = selections.get("rows", [])  # 사용자가 체크한 행 번호(인덱스) 리스트
+
+            if selected_rows:
+                # 선택된 행 번호를 기반으로 삭제 (데이터가 깔끔하게 유지됨)
+                st.session_state.estimate_data = st.session_state.estimate_data.drop(selected_rows).reset_index(
+                    drop=True)
+                st.success(f"✅ {len(selected_rows)}개 항목이 깔끔하게 삭제되었습니다.")
+                st.rerun()
+            else:
+                st.warning("⚠️ 표 맨 왼쪽의 체크박스를 클릭하여 삭제할 항목을 선택해 주세요.")
+
+    with col_btn_all:
+        # 전체 삭제 전용 빨간색 버튼
+        if st.button("💣 전체 삭제", type="primary", use_container_width=True, key="del_all_btn"):
+            delete_all_confirmation()
 
     st.divider()
     st.subheader("📊 3. 조달청 기준 원가계산서 (갑지)")
