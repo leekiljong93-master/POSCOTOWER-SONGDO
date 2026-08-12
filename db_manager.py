@@ -348,7 +348,7 @@ def restore_master_backup(backup_id: str) -> Result:
     try:
         doc = get_sheet()
         lock = acquire_write_lock(doc, owner)
-        if lock.code == "locked":
+        if not lock:
             return lock
 
         snapshot = {}
@@ -504,60 +504,76 @@ def load_project_from_cloud(project_name: str) -> Result:
 
 def save_project_to_cloud(project_name: str, df: pd.DataFrame,
                           expected_version: str | None = None) -> Result:
-    """[패치 ①] 낙관적 동시성 검사 추가.
-
-    expected_version 은 이 세션이 마지막으로 보거나 저장한 타임스탬프이다.
-    시트의 값이 그와 다르면 다른 사람이 먼저 저장한 것이므로 덮어쓰지 않고 충돌을 알린다.
-    """
+    """프로젝트를 저장한다. 동시 저장은 잠금과 버전 검사로 차단한다."""
+    owner = st.session_state.get("_session_id", "unknown")
+    doc = None
     try:
-        ws = get_sheet().worksheet(config.PROJECT_SHEET)
+        doc = get_sheet()
+        lock = acquire_write_lock(doc, owner)
+        if not lock:
+            return lock
+
+        ws = doc.worksheet(config.PROJECT_SHEET)
         payload = df.copy()
         for col in config.ESTIMATE_DATE_COLUMNS:
             if col in payload.columns:
-                payload[col] = pd.to_datetime(payload[col], errors="coerce") \
-                                 .dt.strftime("%Y-%m-%d").fillna("")
+                payload[col] = pd.to_datetime(payload[col], errors="coerce")                                  .dt.strftime("%Y-%m-%d").fillna("")
         data_json = payload.to_json(orient="records", force_ascii=False)
 
         records = ws.get_all_records()
         row_idx, stored_date = -1, None
-        for i, r in enumerate(records):
-            if str(r.get("project_name", "")) == str(project_name):
-                row_idx, stored_date = i + 2, str(r.get("date", ""))
+        for i, record in enumerate(records):
+            if str(record.get("project_name", "")) == str(project_name):
+                row_idx, stored_date = i + 2, str(record.get("date", ""))
                 break
 
         if row_idx != -1 and expected_version is not None and stored_date != expected_version:
             return Result.failure(
-                f"다른 사용자가 {stored_date} 에 저장했습니다. "
-                "덮어쓰기 전에 최신본을 다시 불러와 확인하세요.",
+                f"다른 사용자가 {stored_date}에 저장했습니다. 최신본을 다시 불러와 확인하세요.",
                 code="conflict", data=stored_date,
             )
 
         now_str = _dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        values = [[project_name, now_str, data_json]]
         if row_idx != -1:
-            ws.update([[project_name, now_str, data_json]], f"A{row_idx}:C{row_idx}",
-                      value_input_option="USER_ENTERED")
+            ws.update(values, f"A{row_idx}:C{row_idx}", value_input_option="USER_ENTERED")
         else:
-            ws.append_row([project_name, now_str, data_json], value_input_option="USER_ENTERED")
+            ws.append_row(values[0], value_input_option="USER_ENTERED")
 
         get_cloud_projects_list.clear()
         log.info("프로젝트 저장: %s (%d행)", project_name, len(df))
         return Result.success("클라우드 저장 완료", data=now_str, version=now_str)
     except Exception as exc:
         return _fail_from_exc(exc, "프로젝트 저장")
+    finally:
+        if doc is not None:
+            release_write_lock(doc, owner)
 
 
 def delete_project_from_cloud(project_name: str) -> Result:
+    """클라우드 저장본을 영구 삭제한다. 저장과 같은 잠금 규칙을 적용한다."""
+    owner = st.session_state.get("_session_id", "unknown")
+    doc = None
     try:
-        ws = get_sheet().worksheet(config.PROJECT_SHEET)
+        doc = get_sheet()
+        lock = acquire_write_lock(doc, owner)
+        if not lock:
+            return lock
+
+        ws = doc.worksheet(config.PROJECT_SHEET)
         names = ws.col_values(1)
         if str(project_name) not in names:
             return Result.failure("클라우드에서 해당 프로젝트를 찾을 수 없습니다.", code="not_found")
+
         ws.delete_rows(names.index(str(project_name)) + 1)
         get_cloud_projects_list.clear()
         log.info("프로젝트 삭제(클라우드): %s", project_name)
         return Result.success(f"'{project_name}'을 클라우드에서 삭제했습니다.")
     except Exception as exc:
         return _fail_from_exc(exc, "클라우드 프로젝트 삭제")
+    finally:
+        if doc is not None:
+            release_write_lock(doc, owner)
 
 
 # ═══════════════════════════════════════════════════════════
@@ -605,7 +621,7 @@ def upload_combined_dataframe_to_master(df: pd.DataFrame) -> Result:
 
         doc = get_sheet()
         lock = acquire_write_lock(doc, owner)
-        if lock.code == "locked":
+        if not lock:
             return lock
 
         backup_id = create_master_backup(doc)
