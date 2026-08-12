@@ -30,6 +30,7 @@ import logic_schedule as sch
 import logic_takeoff as tko
 import state_manager as state
 import ui_components as ui
+import ui_theme as theme
 
 XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 log = config.get_logger("app")
@@ -84,7 +85,7 @@ def audit(action: str, detail: str = "") -> None:
 st.set_page_config(page_title=config.PAGE_TITLE, page_icon=config.PAGE_ICON,
                    layout="wide")
 st.title(config.APP_TITLE)
-ui.apply_theme()
+theme.apply_theme()
 
 if _AUTH_ERROR:
     st.error("편집 권한 모듈을 불러오지 못했습니다. 보안을 위해 앱을 시작하지 않습니다.")
@@ -114,16 +115,11 @@ def show_errors() -> None:
         st.warning(f"데이터 조회 경고: {message}")
 
 
-@st.cache_data(ttl=300, show_spinner=False)
-def _rates_signature(values: tuple) -> tuple:
-    """제비율 변경 감지용 (캐시 키 안정화)."""
-    return values
-
-
 # ═══════════════════════════════════════════════════════════
 # 2. 사이드바
 # ═══════════════════════════════════════════════════════════
-st.sidebar.subheader("설계서 작성")
+theme.render_sidebar_guide()
+st.sidebar.subheader("프로젝트 작업")
 
 new_project = st.sidebar.text_input("새 프로젝트명 입력",
                                     placeholder="예: 포스코타워-송도 환경개선")
