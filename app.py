@@ -34,24 +34,33 @@ import ui_components as ui
 XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 log = config.get_logger("app")
 
-# 편집 권한 모듈은 선택 사항 (테스트베드 단계에서는 미사용)
+# auth.py가 없으면 기존처럼 누구나 편집할 수 있다.
+# 단, auth.py가 존재하지만 정상 동작하지 않으면 안전을 위해 앱을 중지한다.
 try:
     import auth
     _AUTH = True
-except Exception:
+    _AUTH_ERROR = None
+except ModuleNotFoundError as exc:
+    if exc.name != "auth":
+        raise
     auth = None
     _AUTH = False
+    _AUTH_ERROR = None
+except Exception as exc:
+    auth = None
+    _AUTH = True
+    _AUTH_ERROR = exc
 
 
 def can_edit() -> bool:
-    """편집 가능 여부. auth 미사용 환경에서는 항상 True."""
+    """편집 권한 오류는 허용하지 않고 잠금 상태로 처리한다."""
     if not _AUTH:
         return True
     try:
         return auth.can_edit()
     except Exception:
-        log.exception("권한 확인 실패 — 편집 허용으로 처리")
-        return True
+        log.exception("권한 확인 실패 — 편집 잠금으로 처리")
+        return False
 
 
 def require_edit(action: str) -> bool:
@@ -75,6 +84,12 @@ def audit(action: str, detail: str = "") -> None:
 st.set_page_config(page_title=config.PAGE_TITLE, page_icon=config.PAGE_ICON,
                    layout="wide")
 st.title(config.APP_TITLE)
+ui.apply_theme()
+
+if _AUTH_ERROR:
+    st.error("편집 권한 모듈을 불러오지 못했습니다. 보안을 위해 앱을 시작하지 않습니다.")
+    st.caption(f"상세 사유: {type(_AUTH_ERROR).__name__} - {_AUTH_ERROR}")
+    st.stop()
 
 init_result = db.init_db()
 if not init_result:
@@ -87,7 +102,9 @@ if not init_result:
 
 state.bootstrap()
 state.session_id()
-dbx.ensure_sheets()          # 부가 시트가 없으면 헤더만 만들어 둔다
+extra_init_result = dbx.ensure_sheets()
+if not extra_init_result:
+    st.warning(f"부가 데이터 시트 준비 실패: {extra_init_result.message}")
 
 
 def show_errors() -> None:
@@ -124,8 +141,9 @@ if selected_project != state.current_project():
     state.switch_project(selected_project)
     st.rerun()
 
-st.sidebar.button("현재 프로젝트 삭제", use_container_width=True,
-                  on_click=ui.delete_confirmation, args=(state.current_project(),))
+if st.sidebar.button("현재 프로젝트 삭제", use_container_width=True):
+    if require_edit("현재 프로젝트 삭제"):
+        ui.delete_confirmation(state.current_project())
 
 st.sidebar.divider()
 st.sidebar.subheader("문서 작성 정보")
@@ -247,7 +265,7 @@ with tab_est:
     st.subheader("1. 품목 단가 추가")
     add_columns = st.columns(len(config.MASTER_SHEET_NAMES))
     for column, sheet_name in zip(add_columns, config.MASTER_SHEET_NAMES):
-        ui.render_add_item_column(column, sheet_name)
+        ui.render_add_item_column(column, sheet_name, editable=can_edit())
     show_errors()
 
     st.divider()
@@ -264,6 +282,7 @@ with tab_est:
         use_container_width=True,
         hide_index=False,
         key="estimate_editor",
+        disabled=not can_edit(),
         column_config={
             "구분": st.column_config.SelectboxColumn(
                 "구분", options=config.GUBUN_OPTIONS, required=True),
@@ -288,7 +307,7 @@ with tab_est:
     _, delete_column = st.columns([7, 3])
     with delete_column:
         if st.button("전체 내역 비우기", type="primary", use_container_width=True,
-                     key="clear_all"):
+                     key="clear_all") and require_edit("전체 내역 삭제"):
             ui.delete_all_confirmation()
 
     st.divider()
@@ -482,14 +501,15 @@ with tab_tko:
 
         if st.button("산출 수량을 내역서에 반영", type="primary",
                      use_container_width=True, key="apply_takeoff"):
-            applied, apply_issues = tko.apply_to_estimate(state.get_estimate(), computed)
-            matched = int((applied["수량출처"] == "수량산출서").sum())
-            state.set_estimate(applied.drop(columns=["수량출처"], errors="ignore"))
-            st.success(f"{matched}개 항목의 수량을 산출서 값으로 반영했습니다.")
-            unused = tko.validate(apply_issues)
-            if not unused.empty:
-                st.info("아래 항목은 확인이 필요합니다.")
-                st.dataframe(unused, use_container_width=True, hide_index=True)
+            if require_edit("산출 수량 반영"):
+                applied, apply_issues = tko.apply_to_estimate(state.get_estimate(), computed)
+                matched = int((applied["수량출처"] == "수량산출서").sum())
+                state.set_estimate(applied.drop(columns=["수량출처"], errors="ignore"))
+                st.success(f"{matched}개 항목의 수량을 산출서 값으로 반영했습니다.")
+                unused = tko.validate(apply_issues)
+                if not unused.empty:
+                    st.info("아래 항목은 확인이 필요합니다.")
+                    st.dataframe(unused, use_container_width=True, hide_index=True)
     else:
         st.info("산출 내역이 없습니다. 아래 표에 입력하고 저장하세요.")
 
