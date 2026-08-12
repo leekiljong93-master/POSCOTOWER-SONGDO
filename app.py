@@ -437,6 +437,7 @@ with tab_boq:
     edited_sets = st.data_editor(
         set_df if not set_df.empty else boq.sample_set_sheet(),
         num_rows="dynamic", use_container_width=True, key="set_editor",
+        disabled=not can_edit(),
         column_config={
             "구분": st.column_config.SelectboxColumn(
                 "구분", options=config.GUBUN_OPTIONS, required=True),
@@ -514,6 +515,7 @@ with tab_tko:
     edited_takeoff = st.data_editor(
         takeoff_sheet if not takeoff_sheet.empty else tko.sample_takeoff_sheet(),
         num_rows="dynamic", use_container_width=True, key="takeoff_editor",
+        disabled=not can_edit(),
         column_config={
             "산출식": st.column_config.TextColumn(
                 "산출식", help="예: 12.5 × 8.4  또는  (15+8)*2*2.7"),
@@ -627,6 +629,7 @@ with tab_sch:
     edited_schedule = st.data_editor(
         schedule_sheet if not schedule_sheet.empty else sch.sample_schedule_sheet(),
         num_rows="dynamic", use_container_width=True, key="schedule_editor",
+        disabled=not can_edit(),
         column_config={
             "공기": st.column_config.NumberColumn("공기(영업일)", format="%d",
                                                 min_value=0),
@@ -724,7 +727,8 @@ with tab_chg:
     reason_sheet = dbx.get_reason_sheet()
     edited_reasons = st.data_editor(
         reason_sheet if not reason_sheet.empty else chg.sample_reason_sheet(),
-        num_rows="dynamic", use_container_width=True, key="reason_editor")
+        num_rows="dynamic", use_container_width=True, key="reason_editor",
+        disabled=not can_edit())
 
     if st.button("변경사유 저장", type="primary", use_container_width=True,
                  key="save_reasons"):
@@ -798,6 +802,7 @@ with tab_db:
 
     edited_master = st.data_editor(
         master_view, num_rows="dynamic", use_container_width=True, key="master_editor",
+        disabled=not can_edit(),
         column_config={
             "구분": st.column_config.SelectboxColumn(
                 "구분 (필수)", options=config.MASTER_SHEET_NAMES, required=True),
