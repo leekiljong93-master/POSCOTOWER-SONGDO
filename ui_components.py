@@ -53,7 +53,7 @@ def clean_spec(raw_spec, item_name: str) -> str:
 # ═══════════════════════════════════════════════════════════
 def render_add_item_column(col, sheet_name: str, *, gubun: str | None = None,
                            icon: str | None = None, default_unit: str | None = None,
-                           qty_label: str | None = None):
+                           qty_label: str | None = None, editable: bool = True):
     """마스터 시트 1개에 대한 '품목 선택 → 규격 → 단가 → 수량 → 추가' 위젯.
 
     sheet_name 만 넘기면 나머지는 config / SHEET_UI_PRESET 에서 자동 결정된다.
@@ -69,6 +69,10 @@ def render_add_item_column(col, sheet_name: str, *, gubun: str | None = None,
 
     with col:
         st.markdown(f"#### {icon} {canonical_sheet}")
+
+        if not editable:
+            st.caption("편집 권한이 필요합니다.")
+            return
 
         df_master = db.get_filtered_master_items(canonical_sheet)
         if df_master.empty:
