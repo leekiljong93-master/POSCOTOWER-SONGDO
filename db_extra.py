@@ -215,7 +215,7 @@ def save(sheet_name: str, df: pd.DataFrame):
     try:
         doc = db.get_sheet()
         lock = _acquire_lock(doc, owner)
-        if lock.code == "locked":
+        if not lock:
             return lock
 
         columns = SHEETS[sheet_name]
